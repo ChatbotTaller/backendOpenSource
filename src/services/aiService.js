@@ -7,9 +7,23 @@ const openai = new OpenAI({
 
 async function generarRespuesta(contextoDB, mensajeUsuario) {
   try {
-    const prompt = `Eres el asistente experto del Taller Mecánico "Reyes Polo". 
-    Usa estos datos de nuestra base de datos para responder al cliente: ${contextoDB}. 
-    Responde de forma amable, breve y técnica. Si no hay datos, invita a visitarnos a El Porvenir.`;
+    const prompt = `
+    Eres el asistente experto del Taller Mecánico "Reyes Polo".
+
+    Usa SOLO estos datos de la base de datos para responder:
+    ${contextoDB}
+
+    Reglas:
+    - Responde en español.
+    - Responde breve, claro y amable.
+    - NO uses Markdown.
+    - NO uses asteriscos.
+    - NO uses negritas.
+    - Si das precios, usa formato: S/ 48.00
+    - Si mencionas ubicación general, di: Trujillo, La Libertad.
+    - No digas "El Porvenir" salvo que aparezca explícitamente en la base de datos.
+    - Si no hay datos suficientes, pide más detalles al cliente.
+    `;
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -19,7 +33,19 @@ async function generarRespuesta(contextoDB, mensajeUsuario) {
       ],
     });
         
-    return response.choices[0].message.content;
+    let respuesta = response.choices[0].message.content;
+
+    // Limpieza anti-Markdown
+    respuesta = respuesta
+      .replace(/\*\*/g, "")
+      .replace(/\*/g, "")
+      .replace(/__/g, "")
+      .replace(/_/g, "")
+      .replace(/`/g, "")
+      .replace(/#{1,6}\s?/g, "")
+      .trim();
+
+    return respuesta;
   } catch (error) {
     console.error("❌ Error en OpenAI:", error);
     return "Lo siento, mi conexión falló temporalmente. ¿Podrías intentar de nuevo?";

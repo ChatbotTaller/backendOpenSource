@@ -34,25 +34,25 @@ const procesarMensaje = (req, res) => {
     msg.includes("aire") ||
     msg.includes("repuesto") ||
     msg.includes("precio") ||
-    msg.includes("stock")
+    msg.includes("producto")
   ) {
     let keyword = msg;
 
     if (msg.includes("filtro de aire")) keyword = "filtro de aire";
     else if (msg.includes("filtro de aceite")) keyword = "filtro de aceite";
-    else if (msg.includes("filtro combustible")) keyword = "filtro combustible";
+    else if (msg.includes("filtro combustible") || msg.includes("filtro de combustible")) keyword = "filtro de combustible";
     else if (msg.includes("cabina")) keyword = "cabina";
     else if (msg.includes("aceite")) keyword = "aceite";
     else if (msg.includes("filtro")) keyword = "filtro";
 
     sql = `
-      SELECT codigo, descripcion, aplicacion, stock, precio_venta
+      SELECT codigo, descripcion, ubicacion, responsable, precio_venta
       FROM inventario
-      WHERE descripcion LIKE ? OR aplicacion LIKE ?
+      WHERE descripcion LIKE ?
       LIMIT 10
     `;
 
-    params = [`%${keyword}%`, `%${keyword}%`];
+    params = [`%${keyword}%`];
   }
 
   // SERVICIOS
