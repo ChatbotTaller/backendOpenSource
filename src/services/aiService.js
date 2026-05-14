@@ -23,6 +23,12 @@ async function generarRespuesta(contextoDB, mensajeUsuario) {
     - Si mencionas ubicación general, di: Trujillo, La Libertad.
     - No digas "El Porvenir" salvo que aparezca explícitamente en la base de datos.
     - Si no hay datos suficientes, pide más detalles al cliente.
+    - Cuando listes varios servicios o productos, sepáralos por líneas.
+    - No respondas todo en un solo párrafo.
+    - Usa este formato:
+      Nombre: ...
+      Precio: S/ ...
+      Detalle: ...
     `;
 
     const response = await openai.chat.completions.create({
