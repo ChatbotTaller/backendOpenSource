@@ -1,89 +1,147 @@
-const db = require('../config/database');
 const aiService = require('../services/aiService');
 
-const procesarMensaje = (req, res) => {
-  const userMsg =
-    req.body.user_message ||
-    req.body.message ||
-    req.body.text ||
-    req.body.content ||
-    "Hola";
+const { classifyIntent } = require('../agents/classifierAgent');
+const inventoryAgent = require('../agents/inventoryAgent');
+const servicesAgent = require('../agents/servicesAgent');
+const scheduleAgent = require('../agents/scheduleAgent');
+const infoAgent = require('../agents/infoAgent');
+const appointmentAgent = require('../agents/appointmentAgent');
 
-  const msg = userMsg.toLowerCase();
+const {
+  getOrCreateSession,
+  saveMessage,
+  updateConversationContext,
+  getLastContext
+} = require('../agents/memoryAgent');
 
-  let sql = "";
-  let params = [];
+async function procesarMensaje(req, res) {
+  const inicio = Date.now();
 
-  // HORARIOS
-  if (
-    msg.includes("horario") ||
-    msg.includes("hora") ||
-    msg.includes("atienden") ||
-    msg.includes("trabajan") ||
-    msg.includes("abierto") ||
-    msg.includes("cierran") ||
-    msg.includes("abren")
-  ) {
-    sql = "SELECT * FROM horarios";
-  }
+  try {
+    const userMsg =
+      req.body.user_message ||
+      req.body.message ||
+      req.body.text ||
+      req.body.content ||
+      "Hola";
 
-  // INVENTARIO / REPUESTOS
-  else if (
-    msg.includes("filtro") ||
-    msg.includes("aceite") ||
-    msg.includes("aire") ||
-    msg.includes("repuesto") ||
-    msg.includes("precio") ||
-    msg.includes("producto")
-  ) {
-    let keyword = msg;
+    const sessionId = req.body.session_id || req.ip || "web_demo";
 
-    if (msg.includes("filtro de aire")) keyword = "filtro de aire";
-    else if (msg.includes("filtro de aceite")) keyword = "filtro de aceite";
-    else if (msg.includes("filtro combustible") || msg.includes("filtro de combustible")) keyword = "filtro de combustible";
-    else if (msg.includes("cabina")) keyword = "cabina";
-    else if (msg.includes("aceite")) keyword = "aceite";
-    else if (msg.includes("filtro")) keyword = "filtro";
+    const { usuario, conversacion } = await getOrCreateSession(sessionId);
 
-    sql = `
-      SELECT codigo, descripcion, ubicacion, responsable, precio_venta
-      FROM inventario
-      WHERE descripcion LIKE ?
-      LIMIT 10
-    `;
+    let intent = classifyIntent(userMsg);
+    const lastContext = getLastContext(conversacion);
 
-    params = [`%${keyword}%`];
-  }
-
-  // SERVICIOS
-  else if (
-    msg.includes("servicio") ||
-    msg.includes("mantenimiento") ||
-    msg.includes("garantia") ||
-    msg.includes("reparacion")
-  ) {
-    sql = "SELECT * FROM servicios";
-  }
-
-  // INFO GENERAL
-  else {
-    sql = "SELECT * FROM info_taller";
-  }
-
-  db.query(sql, params, async (err, results) => {
-    if (err) {
-      console.error("❌ Error en DB:", err);
-      return res.json({ reply: "Error consultando la base de datos." });
+    if (intent === "follow_up" && conversacion.ultima_intencion) {
+      intent = conversacion.ultima_intencion;
     }
 
-    console.log("📩 Mensaje:", userMsg);
-    console.log("📊 Resultados BD:", results);
+    let agentResult;
 
-    const contexto = JSON.stringify(results);
-    const respuestaIA = await aiService.generarRespuesta(contexto, userMsg);
+    // CITAS
+    const citaResult = await appointmentAgent(userMsg, usuario.id);
 
-    res.json({ reply: respuestaIA });
-  });
-};
+    if (citaResult) {
+      agentResult = {
+        intent: "appointment",
+        data: [],
+        keyword: null,
+        directReply: citaResult.reply
+      };
+    }
+
+    // INVENTARIO
+    else if (intent === "inventory") {
+
+      const messageForAgent =
+        classifyIntent(userMsg) === "follow_up" && lastContext?.keyword
+          ? lastContext.keyword
+          : userMsg;
+
+      agentResult = await inventoryAgent(messageForAgent);
+    }
+
+    // SERVICIOS
+    else if (intent === "services") {
+
+      const messageForAgent =
+        classifyIntent(userMsg) === "follow_up" && lastContext?.keyword
+          ? lastContext.keyword
+          : userMsg;
+
+      agentResult = await servicesAgent(messageForAgent);
+    }
+
+    // HORARIOS
+    else if (intent === "schedule") {
+      agentResult = await scheduleAgent();
+    }
+
+    // INFO GENERAL
+    else {
+      agentResult = await infoAgent();
+    }
+
+    const contextoIA = {
+      usuario,
+      intent,
+      pregunta_usuario: userMsg,
+      resultado_agente: agentResult,
+      contexto_anterior: lastContext
+    };
+
+    let respuestaIA;
+
+    // Si el agente ya respondió directamente
+    if (agentResult?.directReply) {
+
+      respuestaIA = agentResult.directReply;
+
+    } else {
+
+      respuestaIA = await aiService.generarRespuesta(
+        JSON.stringify(contextoIA),
+        userMsg
+      );
+
+    }
+
+    const tiempoRespuesta = Date.now() - inicio;
+
+    await saveMessage(
+      conversacion.id,
+      "usuario",
+      userMsg,
+      intent,
+      null
+    );
+
+    await saveMessage(
+      conversacion.id,
+      "bot",
+      respuestaIA,
+      intent,
+      tiempoRespuesta
+    );
+
+    await updateConversationContext(conversacion.id, intent, {
+      keyword: agentResult?.keyword || lastContext?.keyword || null,
+      intent,
+      data: agentResult?.data ? agentResult.data.slice(0, 3) : []
+    });
+
+    res.json({
+      reply: respuestaIA,
+      intent,
+      response_time_ms: tiempoRespuesta
+    });
+
+  } catch (error) {
+    console.error("❌ Error en webhookController:", error);
+    res.json({
+      reply: "Lo siento, ocurrió un problema procesando tu consulta. Inténtalo nuevamente."
+    });
+  }
+}
 
 module.exports = { procesarMensaje };
