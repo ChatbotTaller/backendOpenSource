@@ -5,6 +5,7 @@ const inventoryAgent = require('../agents/inventoryAgent');
 const servicesAgent = require('../agents/servicesAgent');
 const scheduleAgent = require('../agents/scheduleAgent');
 const infoAgent = require('../agents/infoAgent');
+const appointmentAgent = require('../agents/appointmentAgent');
 
 const {
   getOrCreateSession,
@@ -37,28 +38,46 @@ async function procesarMensaje(req, res) {
 
     let agentResult;
 
-    if (intent === "inventory") {
+    // CITAS
+    const citaResult = await appointmentAgent(userMsg, usuario.id);
+
+    if (citaResult) {
+      agentResult = {
+        intent: "appointment",
+        data: [],
+        keyword: null,
+        directReply: citaResult.reply
+      };
+    }
+
+    // INVENTARIO
+    else if (intent === "inventory") {
+
       const messageForAgent =
         classifyIntent(userMsg) === "follow_up" && lastContext?.keyword
           ? lastContext.keyword
           : userMsg;
 
       agentResult = await inventoryAgent(messageForAgent);
-    } 
-    
+    }
+
+    // SERVICIOS
     else if (intent === "services") {
+
       const messageForAgent =
         classifyIntent(userMsg) === "follow_up" && lastContext?.keyword
           ? lastContext.keyword
           : userMsg;
 
       agentResult = await servicesAgent(messageForAgent);
-    } 
-    
+    }
+
+    // HORARIOS
     else if (intent === "schedule") {
       agentResult = await scheduleAgent();
-    } 
-    
+    }
+
+    // INFO GENERAL
     else {
       agentResult = await infoAgent();
     }
@@ -71,10 +90,21 @@ async function procesarMensaje(req, res) {
       contexto_anterior: lastContext
     };
 
-    const respuestaIA = await aiService.generarRespuesta(
-      JSON.stringify(contextoIA),
-      userMsg
-    );
+    let respuestaIA;
+
+    // Si el agente ya respondió directamente
+    if (agentResult?.directReply) {
+
+      respuestaIA = agentResult.directReply;
+
+    } else {
+
+      respuestaIA = await aiService.generarRespuesta(
+        JSON.stringify(contextoIA),
+        userMsg
+      );
+
+    }
 
     const tiempoRespuesta = Date.now() - inicio;
 
@@ -95,9 +125,9 @@ async function procesarMensaje(req, res) {
     );
 
     await updateConversationContext(conversacion.id, intent, {
-      keyword: agentResult.keyword || lastContext?.keyword || null,
+      keyword: agentResult?.keyword || lastContext?.keyword || null,
       intent,
-      data: agentResult.data ? agentResult.data.slice(0, 3) : []
+      data: agentResult?.data ? agentResult.data.slice(0, 3) : []
     });
 
     res.json({
