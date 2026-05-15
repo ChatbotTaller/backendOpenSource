@@ -95,18 +95,77 @@ async function appointmentAgent(message, usuarioId) {
       // PASO TELEFONO
       if (estado.paso === 'telefono') {
 
-        const sql = `
-          UPDATE estado_cita_temporal
-          SET telefono = ?, paso = 'vehiculo'
-          WHERE usuario_id = ?
+        // BUSCAR SI EL CLIENTE YA EXISTE
+
+        const buscarClienteSql = `
+          SELECT *
+          FROM citas
+          WHERE cliente_telefono = ?
+          ORDER BY id DESC
+          LIMIT 1
         `;
 
-        db.query(sql, [message, usuarioId]);
+        db.query(buscarClienteSql, [message], (errCliente, clientes) => {
 
-        return resolve({
-          success: true,
-          reply: "Excelente 🚘\n¿Qué vehículo tienes? (marca/modelo)"
+          if (errCliente) return reject(errCliente);
+
+          // SI YA EXISTE CLIENTE
+
+          if (clientes.length > 0) {
+
+            const cliente = clientes[0];
+
+            const sqlUpdate = `
+              UPDATE estado_cita_temporal
+              SET
+                telefono = ?,
+                nombre = ?,
+                vehiculo = ?,
+                paso = 'motivo'
+              WHERE usuario_id = ?
+            `;
+
+            db.query(
+              sqlUpdate,
+              [
+                message,
+                cliente.cliente_nombre,
+                cliente.vehiculo_texto,
+                usuarioId
+              ]
+            );
+
+            return resolve({
+              success: true,
+              reply:
+      `Hola nuevamente ${cliente.cliente_nombre} 👋
+
+      Encontré tu información registrada.
+
+      🚗 Vehículo: ${cliente.vehiculo_texto}
+
+      ¿Qué servicio deseas realizar esta vez?`
+            });
+
+          }
+
+          // CLIENTE NUEVO
+
+          const sql = `
+            UPDATE estado_cita_temporal
+            SET telefono = ?, paso = 'vehiculo'
+            WHERE usuario_id = ?
+          `;
+
+          db.query(sql, [message, usuarioId]);
+
+          return resolve({
+            success: true,
+            reply: "Excelente 🚘\n¿Qué vehículo tienes? (marca/modelo)"
+          });
+
         });
+
       }
 
       // PASO VEHICULO
@@ -174,9 +233,22 @@ async function appointmentAgent(message, usuarioId) {
 
           if (existentes.length > 0) {
 
+            const sugerencias = [
+              "08:30",
+              "10:30",
+              "12:30",
+              "14:30",
+              "16:30"
+            ];
+
             return resolve({
               success: false,
-              reply: "Lo siento ❌\nYa existe una cita cerca de ese horario.\nPor favor elige otra hora."
+              reply:
+          `Lo siento ❌
+          Ese horario ya está ocupado o muy cerca de otra cita.
+
+          Puedes intentar con uno de estos horarios:
+          ${sugerencias.map(h => `- ${fecha} ${h}`).join('\n')}`
             });
 
           }
