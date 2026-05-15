@@ -6,3 +6,6 @@ node_modules/
 
 # Archivos de registro de errores de npm
 npm-debug.log*
+
+google-credentials.json
+google-token.json

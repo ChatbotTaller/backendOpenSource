@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { eliminarEventoCita } = require('../services/googleCalendarService');
 
 function obtenerCitas(req, res) {
 
@@ -25,44 +26,68 @@ function obtenerCitas(req, res) {
 }
 
 async function actualizarEstado(req, res) {
+    try {
+      const { id } = req.params;
+      const { estado } = req.body;
 
-  try {
+      const buscarSql = `
+        SELECT google_event_id
+        FROM citas
+        WHERE id = ?
+        LIMIT 1
+      `;
 
-    const { id } = req.params;
-    const { estado } = req.body;
+      db.query(buscarSql, [id], (errBuscar, results) => {
+        if (errBuscar) {
+          console.error(errBuscar);
+          return res.status(500).json({
+            error: 'Error buscando cita'
+          });
+        }
 
-    const sql = `
-      UPDATE citas
-      SET estado = ?
-      WHERE id = ?
-    `;
+        const googleEventId = results[0]?.google_event_id || null;
 
-    db.query(sql, [estado, id], (err) => {
+        const updateSql = `
+          UPDATE citas
+          SET estado = ?
+          WHERE id = ?
+        `;
 
-      if (err) {
-        console.error(err);
-        return res.status(500).json({
-          error: 'Error actualizando cita'
+        db.query(updateSql, [estado, id], async (errUpdate) => {
+          if (errUpdate) {
+            console.error(errUpdate);
+            return res.status(500).json({
+              error: 'Error actualizando cita'
+            });
+          }
+
+          if (estado === 'cancelada' && googleEventId) {
+            try {
+              await eliminarEventoCita(googleEventId);
+
+              db.query(
+                `UPDATE citas SET google_event_id = NULL WHERE id = ?`,
+                [id]
+              );
+            } catch (calendarError) {
+              console.error('Error eliminando evento Google:', calendarError);
+            }
+          }
+
+          res.json({
+            success: true
+          });
         });
-      }
-
-      res.json({
-        success: true
       });
 
-    });
+    } catch (error) {
+      console.error(error);
 
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      error: 'Error servidor'
-    });
-
+      res.status(500).json({
+        error: 'Error servidor'
+      });
+    }
   }
-
-}
 
 module.exports = {
   obtenerCitas,
