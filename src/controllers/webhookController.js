@@ -41,6 +41,35 @@ function esSaludo(message) {
     });
   }
 
+  function obtenerEstadoCitaTemporal(usuarioId) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT *
+        FROM estado_cita_temporal
+        WHERE usuario_id = ?
+        LIMIT 1
+      `;
+
+      db.query(sql, [usuarioId], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0] || null);
+      });
+    });
+  }
+
+  function contieneFechaHora(message) {
+      return /\d{4}-\d{2}-\d{2}/.test(message) && /\d{2}:\d{2}/.test(message);
+    }
+
+function pareceConsultaExterna(intent) {
+  return (
+    intent === 'services' ||
+    intent === 'inventory' ||
+    intent === 'schedule' ||
+    intent === 'info'
+  );
+}
+
 const {
   getOrCreateSession,
   saveMessage,
@@ -100,6 +129,56 @@ async function procesarMensaje(req, res) {
 
     let intent = classifyIntent(userMsg);
     const lastContext = getLastContext(conversacion);
+
+    const estadoCitaTemporal = await obtenerEstadoCitaTemporal(usuario.id);
+
+    if (estadoCitaTemporal) {
+      const paso = estadoCitaTemporal.paso;
+
+      const mensajeEsFechaValida =
+        paso === 'fecha' && contieneFechaHora(userMsg);
+
+      const pasoPermiteTextoLibre =
+        paso === 'nombre' ||
+        paso === 'vehiculo' ||
+        paso === 'motivo';
+
+      if (
+        pareceConsultaExterna(intent) &&
+        !mensajeEsFechaValida &&
+        paso !== 'motivo'
+      ) {
+        const respuestaIA =
+    `Primero terminemos de agendar tu cita 😊
+
+    Actualmente estoy esperando este dato:
+    ${paso === 'nombre' ? '👤 tu nombre' : ''}
+    ${paso === 'telefono' ? '📞 tu número de teléfono' : ''}
+    ${paso === 'vehiculo' ? '🚗 tu vehículo' : ''}
+    ${paso === 'fecha' ? '📅 la fecha y hora de tu cita' : ''}
+
+    Luego con gusto respondo tu consulta adicional.`;
+
+        const tiempoRespuesta = Date.now() - inicio;
+
+        await saveMessage(conversacion.id, "usuario", userMsg, "appointment_pending", null);
+        await saveMessage(conversacion.id, "bot", respuestaIA, "appointment_pending", tiempoRespuesta);
+
+        await guardarMetrica({
+          conversacion_id: conversacion.id,
+          pregunta: userMsg,
+          respuesta: respuestaIA,
+          intencion_detectada: "appointment_pending",
+          tiempo_respuesta_ms: tiempoRespuesta
+        });
+
+        return res.json({
+          reply: respuestaIA,
+          intent: "appointment_pending",
+          response_time_ms: tiempoRespuesta
+        });
+      }
+    }
 
     if (intent === "follow_up" && conversacion.ultima_intencion) {
       intent = conversacion.ultima_intencion;

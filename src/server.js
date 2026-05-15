@@ -5,6 +5,7 @@ const webhookRoutes = require('./routes/webhookRoutes');
 const citasRoutes = require('./routes/citasRoutes');
 const metricasRoutes = require('./routes/metricasRoutes');
 const authRoutes = require('./routes/authRoutes');
+const googleRoutes = require('./routes/googleRoutes');
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.use('/', webhookRoutes);
 app.use('/', citasRoutes);
 app.use('/', metricasRoutes);
 app.use('/', authRoutes);
+app.use('/', googleRoutes);
 
 const PORT = process.env.PORT || 3000;
 
