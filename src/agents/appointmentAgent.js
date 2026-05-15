@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { crearEventoCita } = require('../services/googleCalendarService');
 
 function detectarIntencionCita(msg) {
   msg = msg.toLowerCase();
@@ -24,10 +25,7 @@ function extraerHora(msg) {
 }
 
 async function appointmentAgent(message, usuarioId) {
-
   return new Promise((resolve, reject) => {
-
-    // BUSCAR SI YA EXISTE FLUJO
     const sqlEstado = `
       SELECT *
       FROM estado_cita_temporal
@@ -36,15 +34,9 @@ async function appointmentAgent(message, usuarioId) {
     `;
 
     db.query(sqlEstado, [usuarioId], (err, estados) => {
-
       if (err) return reject(err);
 
-      // =========================
-      // SI NO EXISTE FLUJO
-      // =========================
-
       if (estados.length === 0) {
-
         if (!detectarIntencionCita(message)) {
           return resolve(null);
         }
@@ -56,28 +48,20 @@ async function appointmentAgent(message, usuarioId) {
         `;
 
         db.query(crearEstado, [usuarioId], (err2) => {
-
           if (err2) return reject(err2);
 
           return resolve({
             success: true,
             reply: "Claro, puedo ayudarte con tu cita 🚗\n\n¿Cuál es tu nombre?"
           });
-
         });
 
         return;
       }
 
-      // =========================
-      // FLUJO YA INICIADO
-      // =========================
-
       const estado = estados[0];
 
-      // PASO NOMBRE
       if (estado.paso === 'nombre') {
-
         const sql = `
           UPDATE estado_cita_temporal
           SET nombre = ?, paso = 'telefono'
@@ -92,11 +76,7 @@ async function appointmentAgent(message, usuarioId) {
         });
       }
 
-      // PASO TELEFONO
       if (estado.paso === 'telefono') {
-
-        // BUSCAR SI EL CLIENTE YA EXISTE
-
         const buscarClienteSql = `
           SELECT *
           FROM citas
@@ -106,13 +86,9 @@ async function appointmentAgent(message, usuarioId) {
         `;
 
         db.query(buscarClienteSql, [message], (errCliente, clientes) => {
-
           if (errCliente) return reject(errCliente);
 
-          // SI YA EXISTE CLIENTE
-
           if (clientes.length > 0) {
-
             const cliente = clientes[0];
 
             const sqlUpdate = `
@@ -125,31 +101,25 @@ async function appointmentAgent(message, usuarioId) {
               WHERE usuario_id = ?
             `;
 
-            db.query(
-              sqlUpdate,
-              [
-                message,
-                cliente.cliente_nombre,
-                cliente.vehiculo_texto,
-                usuarioId
-              ]
-            );
+            db.query(sqlUpdate, [
+              message,
+              cliente.cliente_nombre,
+              cliente.vehiculo_texto,
+              usuarioId
+            ]);
 
             return resolve({
               success: true,
               reply:
-      `Hola nuevamente ${cliente.cliente_nombre} 👋
+`Hola nuevamente ${cliente.cliente_nombre} 👋
 
-      Encontré tu información registrada.
+Encontré tu información registrada.
 
-      🚗 Vehículo: ${cliente.vehiculo_texto}
+🚗 Vehículo: ${cliente.vehiculo_texto}
 
-      ¿Qué servicio deseas realizar esta vez?`
+¿Qué servicio deseas realizar esta vez?`
             });
-
           }
-
-          // CLIENTE NUEVO
 
           const sql = `
             UPDATE estado_cita_temporal
@@ -163,14 +133,12 @@ async function appointmentAgent(message, usuarioId) {
             success: true,
             reply: "Excelente 🚘\n¿Qué vehículo tienes? (marca/modelo)"
           });
-
         });
 
+        return;
       }
 
-      // PASO VEHICULO
       if (estado.paso === 'vehiculo') {
-
         const sql = `
           UPDATE estado_cita_temporal
           SET vehiculo = ?, paso = 'motivo'
@@ -185,9 +153,7 @@ async function appointmentAgent(message, usuarioId) {
         });
       }
 
-      // PASO MOTIVO
       if (estado.paso === 'motivo') {
-
         const sql = `
           UPDATE estado_cita_temporal
           SET motivo = ?, paso = 'fecha'
@@ -202,22 +168,16 @@ async function appointmentAgent(message, usuarioId) {
         });
       }
 
-      // PASO FECHA
       if (estado.paso === 'fecha') {
-
         const fecha = extraerFecha(message);
         const hora = extraerHora(message);
 
         if (!fecha || !hora) {
-
           return resolve({
             success: false,
             reply: "Formato inválido.\nUsa este formato:\n2026-05-20 09:00"
           });
-
         }
-
-        // VALIDAR BLOQUE DE 2 HORAS
 
         const verificarSql = `
           SELECT *
@@ -228,11 +188,9 @@ async function appointmentAgent(message, usuarioId) {
         `;
 
         db.query(verificarSql, [fecha, hora], (err3, existentes) => {
-
           if (err3) return reject(err3);
 
           if (existentes.length > 0) {
-
             const sugerencias = [
               "08:30",
               "10:30",
@@ -244,16 +202,13 @@ async function appointmentAgent(message, usuarioId) {
             return resolve({
               success: false,
               reply:
-          `Lo siento ❌
-          Ese horario ya está ocupado o muy cerca de otra cita.
+`Lo siento ❌
+Ese horario ya está ocupado o muy cerca de otra cita.
 
-          Puedes intentar con uno de estos horarios:
-          ${sugerencias.map(h => `- ${fecha} ${h}`).join('\n')}`
+Puedes intentar con uno de estos horarios:
+${sugerencias.map(h => `- ${fecha} ${h}`).join('\n')}`
             });
-
           }
-
-          // INSERTAR CITA FINAL
 
           const insertSql = `
             INSERT INTO citas
@@ -282,16 +237,37 @@ async function appointmentAgent(message, usuarioId) {
               estado.vehiculo,
               estado.motivo
             ],
-            (err4) => {
-
+            async (err4, result) => {
               if (err4) return reject(err4);
-
-              // ELIMINAR FLUJO TEMPORAL
 
               db.query(
                 `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
                 [usuarioId]
               );
+
+              let googleEventId = null;
+
+              try {
+                const eventoGoogle = await crearEventoCita({
+                  cliente_nombre: estado.nombre,
+                  cliente_telefono: estado.telefono,
+                  vehiculo_texto: estado.vehiculo,
+                  motivo: estado.motivo,
+                  fecha,
+                  hora
+                });
+
+                googleEventId = eventoGoogle?.id || null;
+              } catch (calendarError) {
+                console.error("❌ Error creando evento en Google Calendar:", calendarError);
+              }
+
+              if (googleEventId) {
+                db.query(
+                  `UPDATE citas SET google_event_id = ? WHERE id = ?`,
+                  [googleEventId, result.insertId]
+                );
+              }
 
               return resolve({
                 success: true,
@@ -305,18 +281,12 @@ async function appointmentAgent(message, usuarioId) {
 📅 Fecha: ${fecha}
 ⏰ Hora: ${hora}`
               });
-
             }
           );
-
         });
-
       }
-
     });
-
   });
-
 }
 
 module.exports = appointmentAgent;
