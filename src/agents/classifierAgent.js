@@ -31,7 +31,15 @@ function classifyIntent(message) {
     msg.includes("atienden") ||
     msg.includes("trabajan") ||
     msg.includes("abren") ||
-    msg.includes("cierran")
+    msg.includes("cierran") ||
+    msg.includes("dias atienden") ||
+    msg.includes("dias trabajan") ||
+    msg.includes("que dias atienden") ||
+    msg.includes("que dias trabajan") ||
+    msg.includes("atienden los") ||
+    msg.includes("abren los") ||
+    msg.includes("horario de atencion") ||
+    msg.includes("horario de atención")
   ) {
     return "schedule";
   }
