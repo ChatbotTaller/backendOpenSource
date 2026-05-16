@@ -6,7 +6,8 @@ const { verificarToken } = require('../middlewares/authMiddleware');
 const {
   obtenerMetricas,
   evaluarMetrica,
-  obtenerResumenMetricas
+  obtenerResumenMetricas,
+  obtenerMetricasPorIntent
 } = require('../controllers/metricasController');
 
 router.get(
@@ -25,6 +26,12 @@ router.get(
   '/metricas/resumen',
   verificarToken,
   obtenerResumenMetricas
+);
+
+router.get(
+  '/metricas/por-intent',
+  verificarToken,
+  obtenerMetricasPorIntent
 );
 
 module.exports = router;
