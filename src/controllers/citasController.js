@@ -45,6 +45,12 @@ async function actualizarEstado(req, res) {
           });
         }
 
+        if (results.length === 0) {
+          return res.status(404).json({
+            error: 'Cita no encontrada'
+          });
+        }
+
         const googleEventId = results[0]?.google_event_id || null;
 
         const updateSql = `
