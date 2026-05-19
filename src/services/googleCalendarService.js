@@ -5,7 +5,21 @@ const { google } = require('googleapis');
 const credentialsPath = path.join(__dirname, '../../google-credentials.json');
 const tokenPath = path.join(__dirname, '../../google-token.json');
 
-const credentials = JSON.parse(fs.readFileSync(credentialsPath));
+let oauth2Client = null;
+
+if (fs.existsSync(credentialsPath)) {
+  const credentials = JSON.parse(fs.readFileSync(credentialsPath));
+
+  const { client_id, client_secret, redirect_uris } = credentials.web;
+
+  oauth2Client = new google.auth.OAuth2(
+    client_id,
+    client_secret,
+    redirect_uris[0]
+  );
+} else {
+  console.log('Google Calendar no configurado en Railway.');
+}
 
 const { client_id, client_secret, redirect_uris } = credentials.web;
 
