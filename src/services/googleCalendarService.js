@@ -7,8 +7,15 @@ const tokenPath = path.join(__dirname, '../../google-token.json');
 
 let oauth2Client = null;
 
-if (fs.existsSync(credentialsPath)) {
-  const credentials = JSON.parse(fs.readFileSync(credentialsPath));
+let credentials = null;
+
+if (process.env.GOOGLE_CREDENTIALS_JSON) {
+  credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
+} else if (fs.existsSync(credentialsPath)) {
+  credentials = JSON.parse(fs.readFileSync(credentialsPath));
+}
+
+if (credentials) {
   const { client_id, client_secret, redirect_uris } = credentials.web;
 
   oauth2Client = new google.auth.OAuth2(
@@ -17,7 +24,7 @@ if (fs.existsSync(credentialsPath)) {
     redirect_uris[0]
   );
 } else {
-  console.log('Google Calendar no configurado en Railway.');
+  console.log('Google Calendar no configurado.');
 }
 
 function getAuthUrl() {
@@ -44,11 +51,16 @@ async function guardarToken(code) {
 function cargarToken() {
   if (!oauth2Client) return false;
 
-  if (!fs.existsSync(tokenPath)) {
-    return false;
+  let tokens = null;
+
+  if (process.env.GOOGLE_TOKEN_JSON) {
+    tokens = JSON.parse(process.env.GOOGLE_TOKEN_JSON);
+  } else if (fs.existsSync(tokenPath)) {
+    tokens = JSON.parse(fs.readFileSync(tokenPath));
   }
 
-  const tokens = JSON.parse(fs.readFileSync(tokenPath));
+  if (!tokens) return false;
+
   oauth2Client.setCredentials(tokens);
   return true;
 }
