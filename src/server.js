@@ -6,6 +6,7 @@ const citasRoutes = require('./routes/citasRoutes');
 const metricasRoutes = require('./routes/metricasRoutes');
 const authRoutes = require('./routes/authRoutes');
 const googleRoutes = require('./routes/googleRoutes');
+const whatsappRoutes = require('./routes/whatsappRoutes');
 
 const app = express();
 
@@ -16,9 +17,20 @@ app.use('/', citasRoutes);
 app.use('/', metricasRoutes);
 app.use('/', authRoutes);
 app.use('/', googleRoutes);
+app.use('/', whatsappRoutes);
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Reyes Polo corriendo en el puerto ${PORT}`);
+});
+
+app.get('/politica-privacidad', (req, res) => {
+  res.send(`
+    <h1>Política de Privacidad - Taller Reyes Polo</h1>
+    <p>Esta aplicación usa WhatsApp Cloud API para responder consultas de clientes.</p>
+    <p>Los datos recibidos como nombre, teléfono, vehículo y mensajes solo se usan para gestionar consultas y citas del taller.</p>
+    <p>No compartimos datos personales con terceros.</p>
+    <p>Contacto: m4eg24@gmail.com</p>
+  `);
 });
