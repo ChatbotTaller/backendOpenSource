@@ -9,7 +9,6 @@ let oauth2Client = null;
 
 if (fs.existsSync(credentialsPath)) {
   const credentials = JSON.parse(fs.readFileSync(credentialsPath));
-
   const { client_id, client_secret, redirect_uris } = credentials.web;
 
   oauth2Client = new google.auth.OAuth2(
@@ -21,15 +20,11 @@ if (fs.existsSync(credentialsPath)) {
   console.log('Google Calendar no configurado en Railway.');
 }
 
-const { client_id, client_secret, redirect_uris } = credentials.web;
-
-const oauth2Client = new google.auth.OAuth2(
-  client_id,
-  client_secret,
-  redirect_uris[0]
-);
-
 function getAuthUrl() {
+  if (!oauth2Client) {
+    throw new Error('Google Calendar no configurado.');
+  }
+
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/calendar.events']
@@ -37,12 +32,18 @@ function getAuthUrl() {
 }
 
 async function guardarToken(code) {
+  if (!oauth2Client) {
+    throw new Error('Google Calendar no configurado.');
+  }
+
   const { tokens } = await oauth2Client.getToken(code);
   oauth2Client.setCredentials(tokens);
   fs.writeFileSync(tokenPath, JSON.stringify(tokens, null, 2));
 }
 
 function cargarToken() {
+  if (!oauth2Client) return false;
+
   if (!fs.existsSync(tokenPath)) {
     return false;
   }
@@ -70,7 +71,6 @@ async function crearEventoCita(cita) {
 
   const inicio = `${fecha}T${hora}:00-05:00`;
 
-  const [hh, mm] = hora.split(':');
   const fechaFin = new Date(`${fecha}T${hora}:00-05:00`);
   fechaFin.setHours(fechaFin.getHours() + 2);
 
@@ -103,24 +103,24 @@ Servicio: ${cita.motivo}
 }
 
 async function eliminarEventoCita(eventId) {
-    const tokenExiste = cargarToken();
+  const tokenExiste = cargarToken();
 
-    if (!tokenExiste || !eventId) {
-        return null;
-    }
+  if (!tokenExiste || !eventId) {
+    return null;
+  }
 
-    const calendar = google.calendar({
-        version: 'v3',
-        auth: oauth2Client
-    });
+  const calendar = google.calendar({
+    version: 'v3',
+    auth: oauth2Client
+  });
 
-    await calendar.events.delete({
-        calendarId: 'primary',
-        eventId
-    });
+  await calendar.events.delete({
+    calendarId: 'primary',
+    eventId
+  });
 
-    return true;
-    }
+  return true;
+}
 
 module.exports = {
   getAuthUrl,
