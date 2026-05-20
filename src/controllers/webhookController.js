@@ -9,6 +9,8 @@ const scheduleAgent = require('../agents/scheduleAgent');
 const infoAgent = require('../agents/infoAgent');
 const appointmentAgent = require('../agents/appointmentAgent');
 
+const agentSkills = require('../agents/agentSkills');
+
 function esSaludo(message) {
     const msg = message.toLowerCase();
 
@@ -234,6 +236,7 @@ async function procesarMensaje(req, res) {
       usuario,
       intent,
       pregunta_usuario: userMsg,
+      agente_seleccionado: agentSkills[intent] || agentSkills.info,
       resultado_agente: agentResult,
       contexto_anterior: lastContext
     };
