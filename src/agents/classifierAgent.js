@@ -16,8 +16,20 @@ function classifyIntent(message) {
     msg.includes("cita") ||
     msg.includes("reserva") ||
     msg.includes("reservar") ||
+    msg.includes("reservame") ||
     msg.includes("agendar") ||
-    msg.includes("separar turno")
+    msg.includes("programar") ||
+    msg.includes("separar turno") ||
+    msg.includes("turno") ||
+    msg.includes("mañana") ||
+    msg.includes("manana") ||
+    msg.includes("pasado mañana") ||
+    msg.includes("pasado manana") ||
+    msg.includes("a las") ||
+    msg.includes("quiero ir") ||
+    msg.includes("puedo ir") ||
+    msg.includes("generarme mi reserva") ||
+    msg.includes("generar reserva")
   ) {
     return "appointment";
   }
