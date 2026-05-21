@@ -46,9 +46,22 @@ function detectarIntencionCita(msg) {
 
   return (
     texto.includes('cita') ||
+    texto.includes('reserva') ||
     texto.includes('reservar') ||
+    texto.includes('reservame') ||
     texto.includes('agendar') ||
-    texto.includes('programar')
+    texto.includes('programar') ||
+    texto.includes('turno') ||
+    texto.includes('separar turno') ||
+    texto.includes('mañana') ||
+    texto.includes('manana') ||
+    texto.includes('pasado mañana') ||
+    texto.includes('pasado manana') ||
+    texto.includes('a las') ||
+    texto.includes('quiero ir') ||
+    texto.includes('puedo ir') ||
+    texto.includes('generarme mi reserva') ||
+    texto.includes('generar reserva')
   );
 }
 
@@ -150,6 +163,146 @@ function extraerHora(msg) {
 
   const [h, m] = match[0].split(':');
   return `${h.padStart(2, '0')}:${m}`;
+}
+
+function extraerFechaHoraNatural(msg) {
+  const texto = normalizar(msg);
+  const ahora = new Date();
+
+  const meses = {
+    enero: 0,
+    febrero: 1,
+    marzo: 2,
+    abril: 3,
+    mayo: 4,
+    junio: 5,
+    julio: 6,
+    agosto: 7,
+    septiembre: 8,
+    setiembre: 8,
+    octubre: 9,
+    noviembre: 10,
+    diciembre: 11
+  };
+
+  let fecha = extraerFecha(msg);
+  let hora = extraerHora(msg);
+
+  if (!fecha) {
+    let fechaObj = null;
+
+    if (texto.includes('pasado manana') || texto.includes('pasado mañana')) {
+      fechaObj = new Date(ahora);
+      fechaObj.setDate(fechaObj.getDate() + 2);
+    } else if (texto.includes('manana') || texto.includes('mañana')) {
+      fechaObj = new Date(ahora);
+      fechaObj.setDate(fechaObj.getDate() + 1);
+    } else {
+      const matchFecha = texto.match(/(\d{1,2})\s+de\s+([a-z]+)/);
+
+      if (matchFecha && meses[matchFecha[2]] !== undefined) {
+        const dia = Number(matchFecha[1]);
+        const mes = meses[matchFecha[2]];
+        const anio = ahora.getFullYear();
+
+        fechaObj = new Date(anio, mes, dia);
+
+        if (fechaObj < new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())) {
+          fechaObj.setFullYear(anio + 1);
+        }
+      }
+    }
+
+    if (fechaObj) {
+      const y = fechaObj.getFullYear();
+      const m = String(fechaObj.getMonth() + 1).padStart(2, '0');
+      const d = String(fechaObj.getDate()).padStart(2, '0');
+      fecha = `${y}-${m}-${d}`;
+    }
+  }
+
+  if (!hora) {
+    const matchHora =
+      texto.match(/a las\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/) ||
+      texto.match(/(\d{1,2})(?::(\d{2}))?\s*(de la tarde|de la mañana|de la manana|de la noche|pm|am)/);
+
+    if (matchHora) {
+      let h = Number(matchHora[1]);
+      const min = matchHora[2] || '00';
+      const periodo = matchHora[3] || '';
+
+      if (
+        periodo.includes('tarde') ||
+        periodo.includes('noche') ||
+        periodo.includes('pm')
+      ) {
+        if (h < 12) h += 12;
+      }
+
+      if (
+        periodo.includes('mañana') ||
+        periodo.includes('manana') ||
+        periodo.includes('am')
+      ) {
+        if (h === 12) h = 0;
+      }
+
+      hora = `${String(h).padStart(2, '0')}:${min}`;
+    }
+  }
+
+  return { fecha, hora };
+}
+
+function extraerDatosCitaEnBloque(message) {
+  const lineas = String(message)
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
+
+  const texto = normalizar(message);
+  const { fecha, hora } = extraerFechaHoraNatural(message);
+
+  const telefonoMatch = message.match(/\b9\d{8}\b/);
+  const telefono = telefonoMatch ? telefonoMatch[0] : null;
+
+  let nombre = null;
+  let vehiculo = null;
+  let motivo = null;
+
+  if (lineas.length >= 4) {
+    nombre = lineas[0];
+    vehiculo = lineas.find(l =>
+      normalizar(l).includes('toyota') ||
+      normalizar(l).includes('nissan') ||
+      normalizar(l).includes('hyundai') ||
+      normalizar(l).includes('honda') ||
+      normalizar(l).includes('kia') ||
+      normalizar(l).includes('mazda') ||
+      normalizar(l).includes('ford') ||
+      normalizar(l).includes('chevrolet')
+    );
+
+    motivo = lineas.find(l =>
+      normalizar(l).includes('cambio') ||
+      normalizar(l).includes('revision') ||
+      normalizar(l).includes('mantenimiento') ||
+      normalizar(l).includes('motor') ||
+      normalizar(l).includes('freno') ||
+      normalizar(l).includes('aceite') ||
+      normalizar(l).includes('filtro')
+    );
+  }
+
+  return {
+    nombre,
+    telefono,
+    vehiculo,
+    motivo,
+    fecha,
+    hora,
+    completo: Boolean(nombre && telefono && vehiculo && motivo && fecha && hora)
+  };
 }
 
 function minutos(hora) {
@@ -297,6 +450,106 @@ async function appointmentAgent(message, usuarioId) {
     `,
     [usuarioId]
   );
+
+    const datosBloque = extraerDatosCitaEnBloque(message);
+
+  if (datosBloque.completo) {
+    if (esFechaPasada(datosBloque.fecha, datosBloque.hora)) {
+      return {
+        success: false,
+        reply: 'No puedo agendar citas en fechas pasadas. Por favor elige una fecha actual o futura.'
+      };
+    }
+
+    const validacionHorario = validarHorario(datosBloque.fecha, datosBloque.hora);
+
+    if (!validacionHorario.valido) {
+      return {
+        success: false,
+        reply: validacionHorario.mensaje
+      };
+    }
+
+    const ocupado = await existeChoqueHorario(datosBloque.fecha, datosBloque.hora);
+
+    if (ocupado) {
+      const sugerencias = await obtenerSugerencias(datosBloque.fecha);
+
+      return {
+        success: false,
+        reply:
+  `Ese horario ya está ocupado o se cruza con otra cita 😅
+
+  Puedes intentar con uno de estos horarios:
+  ${sugerencias.length ? sugerencias.map(h => `- ${datosBloque.fecha} ${h}`).join('\n') : 'No hay horarios disponibles para ese día.'}`
+      };
+    }
+
+    const result = await query(
+      `
+      INSERT INTO citas
+      (
+        usuario_id,
+        fecha,
+        hora,
+        estado,
+        cliente_nombre,
+        cliente_telefono,
+        vehiculo_texto,
+        motivo,
+        canal
+      )
+      VALUES (?, ?, ?, 'pendiente', ?, ?, ?, ?, 'web')
+      `,
+      [
+        usuarioId,
+        datosBloque.fecha,
+        datosBloque.hora,
+        datosBloque.nombre,
+        datosBloque.telefono,
+        datosBloque.vehiculo,
+        datosBloque.motivo
+      ]
+    );
+
+    await query(
+      `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
+      [usuarioId]
+    );
+
+    try {
+      const eventoGoogle = await crearEventoCita({
+        cliente_nombre: datosBloque.nombre,
+        cliente_telefono: datosBloque.telefono,
+        vehiculo_texto: datosBloque.vehiculo,
+        motivo: datosBloque.motivo,
+        fecha: datosBloque.fecha,
+        hora: datosBloque.hora
+      });
+
+      if (eventoGoogle?.id) {
+        await query(
+          `UPDATE citas SET google_event_id = ? WHERE id = ?`,
+          [eventoGoogle.id, result.insertId]
+        );
+      }
+    } catch (calendarError) {
+      console.error('❌ Error creando evento en Google Calendar:', calendarError);
+    }
+
+    return {
+      success: true,
+      reply:
+  `✅ Tu cita fue registrada correctamente.
+
+  👤 Cliente: ${datosBloque.nombre}
+  📞 Teléfono: ${datosBloque.telefono}
+  🚗 Vehículo: ${datosBloque.vehiculo}
+  🛠️ Servicio: ${datosBloque.motivo}
+  📅 Fecha: ${datosBloque.fecha}
+  ⏰ Hora: ${datosBloque.hora}`
+    };
+  }
 
   if (estados.length === 0) {
     if (!detectarIntencionCita(message)) {
@@ -625,13 +878,20 @@ Ejemplo:
       };
     }
 
-    const fecha = extraerFecha(message);
-    const hora = extraerHora(message);
+    const { fecha, hora } = extraerFechaHoraNatural(message);
 
     if (!fecha || !hora) {
       return {
         success: false,
-        reply: 'Formato inválido.\nUsa este formato:\n2026-05-20 09:00'
+        reply:
+    `No pude reconocer bien la fecha y hora 😅
+
+    Puedes escribirlo así:
+    2026-05-21 15:00
+
+    O también:
+    21 de mayo a las 3 de la tarde
+    mañana a las 10`
       };
     }
 
