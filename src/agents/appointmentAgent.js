@@ -77,6 +77,29 @@ function quiereCancelarFlujo(msg) {
   );
 }
 
+function esRespuestaDeContexto(message) {
+  const texto = normalizar(message);
+
+  const frases = [
+    'ya te dije',
+    'te dije',
+    'ya te mencione',
+    'ya te mencioné',
+    'te mencione',
+    'te mencioné',
+    'tambien te mencione',
+    'también te mencioné',
+    'arriba esta',
+    'arriba está',
+    'ya lo sabes',
+    'lo dije antes',
+    'eso mismo',
+    'lo mismo'
+  ];
+
+  return frases.some(frase => texto.includes(normalizar(frase)));
+}
+
 function confirmarVehiculoSi(msg) {
   const texto = normalizar(msg);
 
@@ -165,6 +188,15 @@ function extraerHora(msg) {
   return `${h.padStart(2, '0')}:${m}`;
 }
 
+function fechaValidaReal(anio, mes, dia) {
+  const fecha = new Date(anio, mes, dia);
+  return (
+    fecha.getFullYear() === anio &&
+    fecha.getMonth() === mes &&
+    fecha.getDate() === dia
+  );
+}
+
 function extraerFechaHoraNatural(msg) {
   const texto = normalizar(msg);
   const ahora = obtenerAhoraPeru();
@@ -204,6 +236,10 @@ function extraerFechaHoraNatural(msg) {
         const dia = Number(matchFecha[1]);
         const mes = meses[matchFecha[2]];
         const anio = ahora.getFullYear();
+
+       if (!fechaValidaReal(anio, mes, dia)) {
+          return { fecha: null, hora };
+        }
 
         fechaObj = new Date(anio, mes, dia);
 
@@ -471,7 +507,7 @@ function nombreUsuarioValido(nombre) {
   );
 }
 
-async function appointmentAgent(message, usuarioId) {
+async function appointmentAgent(message, usuarioId, lastContext = null) {
   const estados = await query(
     `
     SELECT *
@@ -536,6 +572,30 @@ async function appointmentAgent(message, usuarioId) {
         usuarioId,
         datosBloque.fecha,
         datosBloque.hora,
+        datosBloque.nombre,
+        datosBloque.telefono,
+        datosBloque.vehiculo,
+        datosBloque.motivo
+      ]
+    );
+
+        await query(
+      `
+      INSERT INTO clientes
+      (
+        nombre,
+        telefono,
+        vehiculo_modelo,
+        ultima_consulta,
+        fecha_registro
+      )
+      VALUES (?, ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE
+        nombre = VALUES(nombre),
+        vehiculo_modelo = VALUES(vehiculo_modelo),
+        ultima_consulta = VALUES(ultima_consulta)
+      `,
+      [
         datosBloque.nombre,
         datosBloque.telefono,
         datosBloque.vehiculo,
@@ -694,19 +754,44 @@ async function appointmentAgent(message, usuarioId) {
       };
     }
 
-    await query(
-      `
-      INSERT INTO estado_cita_temporal
-      (usuario_id, paso)
-      VALUES (?, 'nombre')
-      `,
-      [usuarioId]
-    );
+      const vehiculoContexto = lastContext?.vehiculo || null;
+      const motivoContexto = lastContext?.motivo || null;
 
-    return {
-      success: true,
-      reply: 'Claro, puedo ayudarte con tu cita 🚗\n\n¿Cuál es tu nombre?'
-    };
+      const fechaHoraMensaje = extraerFechaHoraNatural(message);
+      const fechaContexto = fechaHoraMensaje.fecha || null;
+      const horaContexto = fechaHoraMensaje.hora || null;
+
+      let pasoInicial = 'nombre';
+
+      if (vehiculoContexto && motivoContexto) {
+        pasoInicial = 'nombre';
+      }
+
+      await query(
+        `
+      INSERT INTO estado_cita_temporal
+      (usuario_id, paso, vehiculo, motivo, fecha, hora)
+      VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [usuarioId, pasoInicial, vehiculoContexto, motivoContexto, fechaContexto, horaContexto]
+      );
+
+      let mensajeExtra = '';
+
+      if (vehiculoContexto || motivoContexto) {
+        mensajeExtra =
+      `\n\nYa tengo estos datos de tu consulta anterior:
+      ${vehiculoContexto ? `🚗 Vehículo: ${vehiculoContexto}` : ''}
+      ${motivoContexto ? `🛠️ Servicio/problema: ${motivoContexto}` : ''}`;
+      }
+
+      return {
+        success: true,
+        reply:
+      `Claro, puedo ayudarte con tu cita 🚗${mensajeExtra}
+
+      ¿Cuál es tu nombre?`
+      };
   }
 
   const estado = estados[0];
@@ -761,10 +846,10 @@ Por favor escríbeme tu nombre real.`
       return {
         success: false,
         reply:
-`Para continuar necesito un número de teléfono válido 📞
+        `Para continuar necesito un número de teléfono válido 📞
 
-Ejemplo:
-987654321`
+        Ejemplo:
+        987654321`
       };
     }
 
@@ -812,19 +897,34 @@ Ejemplo:
       };
     }
 
-    await query(
-      `
-      UPDATE estado_cita_temporal
-      SET telefono = ?, paso = 'vehiculo'
-      WHERE usuario_id = ?
-      `,
-      [message, usuarioId]
-    );
+      const siguientePaso =
+        estado.vehiculo && estado.motivo
+          ? 'fecha'
+          : 'vehiculo';
 
-    return {
-      success: true,
-      reply: 'Excelente 🚘\n¿Qué vehículo tienes? (marca/modelo)'
-    };
+      await query(
+        `
+        UPDATE estado_cita_temporal
+        SET telefono = ?, paso = ?
+        WHERE usuario_id = ?
+        `,
+        [message, siguientePaso, usuarioId]
+      );
+
+      return {
+        success: true,
+        reply:
+          siguientePaso === 'fecha'
+            ? `Perfecto 😊
+
+      Ya tengo tu vehículo y el problema registrado.
+
+      Ahora envíame la fecha y hora de la cita.
+
+      Ejemplo:
+      2026-05-20 09:00`
+            : 'Excelente 🚘\n¿Qué vehículo tienes? (marca/modelo)'
+      };
   }
 
       if (estado.paso === 'confirmar_vehiculo') {
@@ -891,13 +991,31 @@ Ejemplo:
       };
     }
 
+    let vehiculoFinal = message;
+
+    if (esRespuestaDeContexto(message)) {
+      vehiculoFinal = lastContext?.vehiculo || estado.vehiculo || null;
+
+      if (!vehiculoFinal) {
+        return {
+          success: false,
+          reply:
+  `Aún no tengo claro tu vehículo 😅
+
+  Por favor indícame la marca y modelo.
+  Ejemplo:
+  Mitsubishi Xpander`
+        };
+      }
+    }
+
     await query(
       `
       UPDATE estado_cita_temporal
       SET vehiculo = ?, paso = 'motivo'
       WHERE usuario_id = ?
       `,
-      [message, usuarioId]
+      [vehiculoFinal, usuarioId]
     );
 
     return {
@@ -907,17 +1025,16 @@ Ejemplo:
   }
 
   if (estado.paso === 'motivo') {
-
     if (preguntaPorNombre(message)) {
       return {
         success: true,
         reply:
-    `Sí 😊
+  `Sí 😊
 
-    Tu nombre registrado es: ${estado.nombre}
+  Tu nombre registrado es: ${estado.nombre}
 
-    Ahora continuemos con tu cita:
-    ¿Qué servicio o problema deseas atender?`
+  Ahora continuemos con tu cita:
+  ¿Qué servicio o problema deseas atender?`
       };
     }
 
@@ -925,12 +1042,12 @@ Ejemplo:
       return {
         success: true,
         reply:
-    `Sí 😊
+  `Sí 😊
 
-    Tu vehículo registrado es: ${estado.vehiculo}
+  Tu vehículo registrado es: ${estado.vehiculo}
 
-    Ahora continuemos con tu cita:
-    ¿Qué servicio o problema deseas atender?`
+  Ahora continuemos con tu cita:
+  ¿Qué servicio o problema deseas atender?`
       };
     }
 
@@ -941,24 +1058,42 @@ Ejemplo:
       };
     }
 
+    let motivoFinal = message;
+
+    if (esRespuestaDeContexto(message)) {
+      motivoFinal = lastContext?.motivo || estado.motivo || null;
+
+      if (!motivoFinal) {
+        return {
+          success: false,
+          reply:
+  `Aún no tengo claro el servicio o problema 😅
+
+  Por favor indícame qué deseas atender.
+  Ejemplo:
+  Válvula de transmisión`
+        };
+      }
+    }
+
     await query(
       `
       UPDATE estado_cita_temporal
       SET motivo = ?, paso = 'fecha'
       WHERE usuario_id = ?
       `,
-      [message, usuarioId]
+      [motivoFinal, usuarioId]
     );
 
     return {
       success: true,
       reply:
-`Perfecto 📅
+  `Perfecto 📅
 
-Ahora envíame la fecha y hora.
+  Ahora envíame la fecha y hora.
 
-Ejemplo:
-2026-05-20 09:00`
+  Ejemplo:
+  2026-05-20 09:00`
     };
   }
 
@@ -978,7 +1113,7 @@ Ejemplo:
         reply:
     `No pude reconocer bien la fecha y hora 😅
 
-    Puedes escribirlo así:
+    Verifica que la fecha exista y escríbela así:
     2026-05-21 15:00
 
     O también:
@@ -1039,6 +1174,30 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
         usuarioId,
         fecha,
         hora,
+        estado.nombre,
+        estado.telefono,
+        estado.vehiculo,
+        estado.motivo
+      ]
+    );
+
+        await query(
+      `
+      INSERT INTO clientes
+      (
+        nombre,
+        telefono,
+        vehiculo_modelo,
+        ultima_consulta,
+        fecha_registro
+      )
+      VALUES (?, ?, ?, ?, NOW())
+      ON DUPLICATE KEY UPDATE
+        nombre = VALUES(nombre),
+        vehiculo_modelo = VALUES(vehiculo_modelo),
+        ultima_consulta = VALUES(ultima_consulta)
+      `,
+      [
         estado.nombre,
         estado.telefono,
         estado.vehiculo,
