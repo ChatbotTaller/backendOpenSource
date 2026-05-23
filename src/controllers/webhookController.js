@@ -350,6 +350,9 @@ async function procesarMensaje(req, res) {
       const mensajeEsFechaValida =
         paso === 'fecha' && contieneFechaHora(userMsg);
 
+      const mensajeEsTelefonoValido =
+        paso === 'telefono' && extraerTelefonoDesdeMensaje(userMsg);
+
       const pasoPermiteTextoLibre =
         paso === 'nombre' ||
         paso === 'vehiculo' ||
@@ -358,6 +361,7 @@ async function procesarMensaje(req, res) {
       if (
         pareceConsultaExterna(intent) &&
         !mensajeEsFechaValida &&
+        !mensajeEsTelefonoValido &&
         paso !== 'motivo'
       ) {
         const respuestaIA =
@@ -399,7 +403,11 @@ async function procesarMensaje(req, res) {
     let agentResult;
 
     // CITAS
-    const citaResult = await appointmentAgent(userMsg, usuario.id, lastContext);
+      let citaResult = null;
+
+      if (intent === "appointment" || estadoCitaTemporal) {
+        citaResult = await appointmentAgent(userMsg, usuario.id, lastContext);
+      }
 
     if (citaResult) {
       agentResult = {
@@ -501,21 +509,23 @@ async function procesarMensaje(req, res) {
     const vehiculoDetectado = extraerVehiculoDesdeMensaje(userMsg);
     const motivoDetectado = extraerMotivoDesdeMensaje(userMsg);
 
+    const intentFinal = respuestaIA.includes('Tu cita fue registrada correctamente')
+      ? 'appointment_completed'
+      : intent;
+
     const nuevoContexto = {
       keyword: agentResult?.keyword || lastContext?.keyword || null,
-      intent,
+      intent: intentFinal,
       vehiculo: vehiculoDetectado || lastContext?.vehiculo || null,
       motivo: motivoDetectado || lastContext?.motivo || null,
       data: agentResult?.data ? agentResult.data.slice(0, 3) : []
     };
 
-    await updateConversationContext(conversacion.id, intent, nuevoContexto);
+    await updateConversationContext(conversacion.id, intentFinal, nuevoContexto);
 
     res.json({
       reply: respuestaIA,
-      intent: respuestaIA.includes('Tu cita fue registrada correctamente')
-      ? 'appointment_completed'
-      : intent,
+      intent: intentFinal,
       response_time_ms: tiempoRespuesta
     });
 
