@@ -248,6 +248,7 @@ async function procesarMensaje(req, res) {
       textoFechaHora.includes('qué fecha estamos') ||
       textoFechaHora.includes('que dia es hoy') ||
       textoFechaHora.includes('qué día es hoy') ||
+      textoFechaHora.includes('hoy que dia es') ||
       textoFechaHora.includes('que dia estamos') ||
       textoFechaHora.includes('qué día estamos') ||
       textoFechaHora.includes('hora actual') ||
