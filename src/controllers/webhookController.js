@@ -356,7 +356,8 @@ async function procesarMensaje(req, res) {
       const pasoPermiteTextoLibre =
         paso === 'nombre' ||
         paso === 'vehiculo' ||
-        paso === 'motivo';
+        paso === 'motivo' ||
+        paso === 'confirmar_vehiculo';
 
       if (
         pareceConsultaExterna(intent) &&
@@ -372,6 +373,7 @@ async function procesarMensaje(req, res) {
     ${paso === 'telefono' ? '📞 tu número de teléfono' : ''}
     ${paso === 'vehiculo' ? '🚗 tu vehículo' : ''}
     ${paso === 'fecha' ? '📅 la fecha y hora de tu cita' : ''}
+    ${paso === 'confirmar_vehiculo' ? '🚗 confirmar si usarás el vehículo registrado' : ''}
 
     Luego con gusto respondo tu consulta adicional.`;
 
