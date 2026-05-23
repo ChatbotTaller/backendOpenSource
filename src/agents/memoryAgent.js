@@ -99,9 +99,27 @@ function getLastContext(conversacion) {
   }
 }
 
+function getConversationMessages(conversacionId, limit = 8) {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      SELECT remitente, mensaje
+      FROM mensajes
+      WHERE conversacion_id = ?
+      ORDER BY id DESC
+      LIMIT ?
+    `;
+
+    db.query(sql, [conversacionId, limit], (err, results) => {
+      if (err) return reject(err);
+      resolve(results.reverse());
+    });
+  });
+}
+
 module.exports = {
   getOrCreateSession,
   saveMessage,
   updateConversationContext,
-  getLastContext
+  getLastContext,
+  getConversationMessages
 };
