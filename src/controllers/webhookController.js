@@ -3,6 +3,7 @@ const aiService = require('../services/aiService');
 const { guardarMetrica } = require('../services/metricsService');
 
 const { classifyIntent } = require('../agents/classifierAgent');
+const {obtenerHoraPeru, obtenerFechaActualPeru, obtenerDiaActualPeru} = require('../utils/time');
 const inventoryAgent = require('../agents/inventoryAgent');
 const servicesAgent = require('../agents/servicesAgent');
 const scheduleAgent = require('../agents/scheduleAgent');
