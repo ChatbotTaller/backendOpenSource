@@ -10,6 +10,18 @@ function classifyIntent(message) {
   const msg = normalize(message);
 
   // =========================
+  // CANCELAR CITA
+  // =========================
+  if (
+    msg === "cancelar" ||
+    msg === "cancelar cita" ||
+    msg === "anular cita" ||
+    msg === "quiero cancelar"
+  ) {
+    return "appointment";
+  }
+
+  // =========================
   // CITAS
   // =========================
   if (

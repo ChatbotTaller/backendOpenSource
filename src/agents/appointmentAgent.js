@@ -167,7 +167,7 @@ function extraerHora(msg) {
 
 function extraerFechaHoraNatural(msg) {
   const texto = normalizar(msg);
-  const ahora = new Date();
+  const ahora = obtenerAhoraPeru();
 
   const meses = {
     enero: 0,
@@ -223,7 +223,7 @@ function extraerFechaHoraNatural(msg) {
 
   if (!hora) {
     const matchHora =
-      texto.match(/a las\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/) ||
+      texto.match(/a las\s+(\d{1,2})(?::(\d{2}))?\s*(de la tarde|de la mañana|de la manana|de la noche|pm|am)?/) ||
       texto.match(/(\d{1,2})(?::(\d{2}))?\s*(de la tarde|de la mañana|de la manana|de la noche|pm|am)/);
 
     if (matchHora) {
@@ -310,14 +310,23 @@ function minutos(hora) {
   return h * 60 + m;
 }
 
+function obtenerAhoraPeru() {
+  return new Date(
+    new Date().toLocaleString('en-US', {
+      timeZone: 'America/Lima'
+    })
+  );
+}
+
 function esFechaPasada(fecha, hora) {
   const [y, mo, d] = fecha.split('-').map(Number);
   const [h, mi] = hora.split(':').map(Number);
 
   const fechaCita = new Date(y, mo - 1, d, h, mi);
-  const ahora = new Date();
 
-  return fechaCita < ahora;
+  const ahoraPeru = obtenerAhoraPeru();
+
+  return fechaCita < ahoraPeru;
 }
 
 function obtenerDiaSemana(fecha) {
@@ -440,6 +449,28 @@ async function existeChoqueHorario(fecha, hora) {
   });
 }
 
+async function obtenerUsuario(usuarioId) {
+  const usuarios = await query(
+    `
+    SELECT nombre, telefono
+    FROM usuarios
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [usuarioId]
+  );
+
+  return usuarios[0] || null;
+}
+
+function nombreUsuarioValido(nombre) {
+  return (
+    nombre &&
+    nombre !== 'Visitante web' &&
+    nombre.trim().length >= 2
+  );
+}
+
 async function appointmentAgent(message, usuarioId) {
   const estados = await query(
     `
@@ -513,6 +544,15 @@ async function appointmentAgent(message, usuarioId) {
     );
 
     await query(
+      `
+      UPDATE usuarios
+      SET nombre = ?, telefono = ?
+      WHERE id = ?
+      `,
+      [datosBloque.nombre, datosBloque.telefono, usuarioId]
+    );
+
+    await query(
       `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
       [usuarioId]
     );
@@ -555,6 +595,58 @@ async function appointmentAgent(message, usuarioId) {
     if (!detectarIntencionCita(message)) {
       return null;
     }
+
+    if (quiereCancelarFlujo(message)) {
+      return {
+        success: true,
+        reply:
+    `Claro 😊
+
+    Para cancelar una cita existente, necesito que me indiques al menos:
+    📞 Teléfono
+    📅 Fecha
+    ⏰ Hora
+
+    Ejemplo:
+    Cancelar mi cita del 2026-05-22 a las 10:00`
+      };
+    }
+
+    const usuarioActual = await obtenerUsuario(usuarioId);
+
+  if (nombreUsuarioValido(usuarioActual?.nombre)) {
+    await query(
+      `
+      INSERT INTO estado_cita_temporal
+      (usuario_id, paso, nombre)
+      VALUES (?, 'telefono', ?)
+      `,
+      [usuarioId, usuarioActual.nombre]
+    );
+
+    const { fecha, hora } = extraerFechaHoraNatural(message);
+
+    let mensajeFecha = '';
+
+    if (fecha && hora) {
+      mensajeFecha = `
+
+  Ya entendí que deseas la cita para:
+   ${fecha}
+   ${hora}
+
+  Primero necesito completar tus datos.`;
+    }
+
+    return {
+      success: true,
+      reply:
+  `Claro ${usuarioActual.nombre} 😊
+  Puedo ayudarte con tu cita.${mensajeFecha}
+
+  Ahora envíame tu número de teléfono.`
+    };
+  }
 
     const clientes = await query(
       `
@@ -952,6 +1044,15 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
         estado.vehiculo,
         estado.motivo
       ]
+    );
+
+    await query(
+      `
+      UPDATE usuarios
+      SET nombre = ?, telefono = ?
+      WHERE id = ?
+      `,
+      [estado.nombre, estado.telefono, usuarioId]
     );
 
     await query(
