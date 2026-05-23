@@ -236,6 +236,36 @@ async function procesarMensaje(req, res) {
 
     const sessionId = req.body.session_id || req.ip || "web_demo";
 
+    const textoFechaHora = String(userMsg || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+    if (
+      textoFechaHora.includes('que fecha es hoy') ||
+      textoFechaHora.includes('qué fecha es hoy') ||
+      textoFechaHora.includes('que fecha estamos') ||
+      textoFechaHora.includes('qué fecha estamos') ||
+      textoFechaHora.includes('que dia es hoy') ||
+      textoFechaHora.includes('qué día es hoy') ||
+      textoFechaHora.includes('que dia estamos') ||
+      textoFechaHora.includes('qué día estamos') ||
+      textoFechaHora.includes('hora actual') ||
+      textoFechaHora.includes('que hora es') ||
+      textoFechaHora.includes('qué hora es')
+    ) {
+      return res.json({
+        reply:
+    `📅 Fecha actual Perú:
+    ${obtenerDiaActualPeru()} ${obtenerFechaActualPeru()}
+
+    ⏰ Hora actual Perú:
+    ${obtenerHoraPeru()}`,
+        intent: 'datetime',
+        response_time_ms: Date.now() - inicio
+      });
+    }
+
     const { usuario, conversacion } = await getOrCreateSession(sessionId);
 
     const telefonoDetectado = extraerTelefonoDesdeMensaje(userMsg);
