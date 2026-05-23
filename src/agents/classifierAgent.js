@@ -46,12 +46,22 @@ function classifyIntent(message) {
     return "appointment";
   }
 
+
+  if (
+    msg.includes("que hora es") ||
+    msg.includes("hora actual") ||
+    msg.includes("que dia es") ||
+    msg.includes("fecha actual") ||
+    msg.includes("hoy es")
+  ) {
+    return "datetime";
+  }
+
   // =========================
   // HORARIOS
   // =========================
   if (
     msg.includes("horario") ||
-    msg.includes("hora") ||
     msg.includes("atienden") ||
     msg.includes("trabajan") ||
     msg.includes("abren") ||
