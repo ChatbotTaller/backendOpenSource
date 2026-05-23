@@ -362,7 +362,7 @@ async function procesarMensaje(req, res) {
         pareceConsultaExterna(intent) &&
         !mensajeEsFechaValida &&
         !mensajeEsTelefonoValido &&
-        paso !== 'motivo'
+        !pasoPermiteTextoLibre
       ) {
         const respuestaIA =
     `Primero terminemos de agendar tu cita 😊
