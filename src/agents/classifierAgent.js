@@ -9,6 +9,18 @@ function classifyIntent(message) {
 
   const msg = normalize(message);
 
+  
+  if (
+    msg.includes("capacitacion") ||
+    msg.includes("capacitaciones") ||
+    msg.includes("tutoria") ||
+    msg.includes("tutorias") ||
+    msg.includes("curso") ||
+    msg.includes("clases")
+  ) {
+    return "services";
+  }
+  
   // =========================
   // CANCELAR CITA
   // =========================
@@ -140,7 +152,7 @@ function classifyIntent(message) {
   // MENSAJES CORTOS
   // =========================
   if (msg.length < 20) {
-    return "follow_up";
+    return "info";
   }
 
   // =========================

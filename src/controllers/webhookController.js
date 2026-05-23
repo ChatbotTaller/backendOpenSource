@@ -84,6 +84,27 @@ function esSaludo(message) {
     });
   }
 
+    function obtenerClientePorTelefono(telefono) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        SELECT *
+        FROM clientes
+        WHERE telefono = ?
+        LIMIT 1
+      `;
+
+      db.query(sql, [telefono], (err, results) => {
+        if (err) return reject(err);
+        resolve(results[0] || null);
+      });
+    });
+  }
+
+  function extraerTelefonoDesdeMensaje(message) {
+    const match = String(message || '').match(/\b9\d{8}\b/);
+    return match ? match[0] : null;
+  }
+
   function preguntaPorNombre(message) {
     const msg = String(message || '').toLowerCase();
 
@@ -94,6 +115,57 @@ function esSaludo(message) {
       msg.includes('cuál es mi nombre') ||
       msg.includes('sabes mi nombre')
     );
+  }
+
+    function extraerVehiculoDesdeMensaje(message) {
+    const msg = String(message || '');
+
+    const marcas = [
+      'toyota', 'nissan', 'hyundai', 'honda', 'kia',
+      'mazda', 'ford', 'chevrolet', 'mitsubishi',
+      'xpander', 'hilux', 'frontier', 'navara'
+    ];
+
+    const texto = msg.toLowerCase();
+
+    if (!marcas.some(marca => texto.includes(marca))) {
+      return null;
+    }
+
+    const match =
+      msg.match(/(?:tengo|cuento con|mi vehiculo es|mi carro es|para mi)\s+(.+?)(?:\s+y\s+|\s+con\s+|\s+esta\s+|\s+está\s+|$)/i);
+
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+
+    return msg.trim();
+  }
+
+  function extraerMotivoDesdeMensaje(message) {
+    const msg = String(message || '');
+    const texto = msg.toLowerCase();
+
+    const palabrasProblema = [
+      'averiado', 'averiada', 'falla', 'problema',
+      'reparar', 'arreglar', 'revision', 'revisión',
+      'cambio', 'mantenimiento', 'valvula', 'válvula',
+      'transmision', 'transmisión', 'motor', 'freno',
+      'aceite', 'suspension', 'suspensión'
+    ];
+
+    if (!palabrasProblema.some(p => texto.includes(p))) {
+      return null;
+    }
+
+    const match =
+      msg.match(/(?:averiado|averiada|falla|problema|reparar|arreglar|revision|revisión|cambio|mantenimiento)\s+(?:de\s+|la\s+|el\s+)?(.+)/i);
+
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+
+    return msg.trim();
   }
 
   function obtenerPerfilCliente(usuarioId) {
@@ -165,6 +237,19 @@ async function procesarMensaje(req, res) {
     const sessionId = req.body.session_id || req.ip || "web_demo";
 
     const { usuario, conversacion } = await getOrCreateSession(sessionId);
+
+    const telefonoDetectado = extraerTelefonoDesdeMensaje(userMsg);
+
+    if (telefonoDetectado) {
+      const clienteGuardado = await obtenerClientePorTelefono(telefonoDetectado);
+
+      if (clienteGuardado) {
+        usuario.nombre = clienteGuardado.nombre;
+        usuario.telefono = clienteGuardado.telefono;
+
+        await guardarNombreUsuario(usuario.id, clienteGuardado.nombre);
+      }
+    }
 
     const nombreDetectado = extraerNombreDesdeMensaje(userMsg);
 
@@ -314,7 +399,7 @@ async function procesarMensaje(req, res) {
     let agentResult;
 
     // CITAS
-    const citaResult = await appointmentAgent(userMsg, usuario.id);
+    const citaResult = await appointmentAgent(userMsg, usuario.id, lastContext);
 
     if (citaResult) {
       agentResult = {
@@ -413,11 +498,18 @@ async function procesarMensaje(req, res) {
       tiempo_respuesta_ms: tiempoRespuesta
     });
 
-    await updateConversationContext(conversacion.id, intent, {
+    const vehiculoDetectado = extraerVehiculoDesdeMensaje(userMsg);
+    const motivoDetectado = extraerMotivoDesdeMensaje(userMsg);
+
+    const nuevoContexto = {
       keyword: agentResult?.keyword || lastContext?.keyword || null,
       intent,
+      vehiculo: vehiculoDetectado || lastContext?.vehiculo || null,
+      motivo: motivoDetectado || lastContext?.motivo || null,
       data: agentResult?.data ? agentResult.data.slice(0, 3) : []
-    });
+    };
+
+    await updateConversationContext(conversacion.id, intent, nuevoContexto);
 
     res.json({
       reply: respuestaIA,
