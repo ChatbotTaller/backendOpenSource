@@ -25,6 +25,76 @@ function esSaludo(message) {
     );
   }
 
+  function extraerNombreDesdeMensaje(message) {
+  const msg = String(message || '').trim();
+
+  const patrones = [
+    /mi nombre es\s+([a-záéíóúñ\s]+)/i,
+    /me llamo\s+([a-záéíóúñ\s]+)/i,
+    /soy\s+([a-záéíóúñ\s]+)/i
+  ];
+
+  for (const patron of patrones) {
+    const match = msg.match(patron);
+
+    if (match && match[1]) {
+      return match[1]
+        .trim()
+        .replace(/[.,!?]/g, '')
+        .split(/\s+/)
+        .slice(0, 3)
+        .join(' ');
+    }
+  }
+
+  return null;
+}
+
+  function guardarNombreUsuario(usuarioId, nombre) {
+    return new Promise((resolve, reject) => {
+      const sql = `
+        UPDATE usuarios
+        SET nombre = ?
+        WHERE id = ?
+      `;
+
+      db.query(sql, [nombre, usuarioId], (err, result) => {
+        if (err) return reject(err);
+        resolve(result);
+      });
+    });
+  }
+
+  function obtenerNombreUsuario(usuarioId) {
+    return new Promise((resolve, reject) => {
+      db.query(
+        `
+        SELECT nombre
+        FROM usuarios
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [usuarioId],
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results[0]?.nombre || null);
+        }
+      );
+    });
+  }
+
+  function preguntaPorNombre(message) {
+    const msg = String(message || '').toLowerCase();
+
+    return (
+      msg.includes('como me llamo') ||
+      msg.includes('cómo me llamo') ||
+      msg.includes('cual es mi nombre') ||
+      msg.includes('cuál es mi nombre') ||
+      msg.includes('sabes mi nombre')
+    );
+  }
+
   function obtenerPerfilCliente(usuarioId) {
     return new Promise((resolve, reject) => {
       const sql = `
@@ -76,7 +146,8 @@ const {
   getOrCreateSession,
   saveMessage,
   updateConversationContext,
-  getLastContext
+  getLastContext,
+  getConversationMessages
 } = require('../agents/memoryAgent');
 
 async function procesarMensaje(req, res) {
@@ -93,6 +164,33 @@ async function procesarMensaje(req, res) {
     const sessionId = req.body.session_id || req.ip || "web_demo";
 
     const { usuario, conversacion } = await getOrCreateSession(sessionId);
+
+    const nombreDetectado = extraerNombreDesdeMensaje(userMsg);
+
+    if (nombreDetectado) {
+      await guardarNombreUsuario(usuario.id, nombreDetectado);
+      usuario.nombre = nombreDetectado;
+    }
+
+    if (preguntaPorNombre(userMsg)) {
+      const nombreGuardado = await obtenerNombreUsuario(usuario.id);
+
+      const respuestaIA =
+        nombreGuardado && nombreGuardado !== 'Visitante web'
+          ? `Sí 😊 Tu nombre registrado es ${nombreGuardado}.`
+          : 'Aún no tengo tu nombre registrado. Puedes decirme: “mi nombre es Miguel”.';
+
+      const tiempoRespuesta = Date.now() - inicio;
+
+      await saveMessage(conversacion.id, "usuario", userMsg, "memory", null);
+      await saveMessage(conversacion.id, "bot", respuestaIA, "memory", tiempoRespuesta);
+
+      return res.json({
+        reply: respuestaIA,
+        intent: "memory",
+        response_time_ms: tiempoRespuesta
+      });
+    }
 
     const perfilCliente = await obtenerPerfilCliente(usuario.id);
 
@@ -131,6 +229,32 @@ async function procesarMensaje(req, res) {
 
     let intent = classifyIntent(userMsg);
     const lastContext = getLastContext(conversacion);
+
+    const ultimosMensajes = await getConversationMessages(conversacion.id, 8);
+
+    const contextoConversacion = ultimosMensajes
+      .map(m => `${m.remitente}: ${m.mensaje}`)
+      .join('\n');
+
+    const mensajeCierre = ['ok', 'okay', 'okey', 'gracias', 'listo', 'ya', 'perfecto'];
+
+    if (
+      mensajeCierre.includes(userMsg.toLowerCase().trim()) &&
+      lastContext?.intent === 'appointment_completed'
+    ) {
+      const respuestaIA = 'Perfecto 😊 Tu cita ya quedó registrada. Si necesitas consultar otra cosa, aquí estoy.';
+
+      const tiempoRespuesta = Date.now() - inicio;
+
+      await saveMessage(conversacion.id, "usuario", userMsg, "cierre", null);
+      await saveMessage(conversacion.id, "bot", respuestaIA, "cierre", tiempoRespuesta);
+
+      return res.json({
+        reply: respuestaIA,
+        intent: "cierre",
+        response_time_ms: tiempoRespuesta
+      });
+    }
 
     const estadoCitaTemporal = await obtenerEstadoCitaTemporal(usuario.id);
 
@@ -251,7 +375,12 @@ async function procesarMensaje(req, res) {
     } else {
 
       respuestaIA = await aiService.generarRespuesta(
-        JSON.stringify(contextoIA),
+        `
+      ${JSON.stringify(contextoIA)}
+
+      Conversación reciente:
+      ${contextoConversacion}
+      `,
         userMsg
       );
 
@@ -291,7 +420,9 @@ async function procesarMensaje(req, res) {
 
     res.json({
       reply: respuestaIA,
-      intent,
+      intent: respuestaIA.includes('Tu cita fue registrada correctamente')
+      ? 'appointment_completed'
+      : intent,
       response_time_ms: tiempoRespuesta
     });
 
