@@ -45,7 +45,8 @@ function detectarIntencionCita(msg) {
   const texto = normalizar(msg);
 
   return (
-    texto.includes('cita') ||
+    /\bcita\b/.test(texto) ||
+    /\bcitas\b/.test(texto) ||
     texto.includes('reserva') ||
     texto.includes('reservar') ||
     texto.includes('reservame') ||
@@ -53,11 +54,8 @@ function detectarIntencionCita(msg) {
     texto.includes('programar') ||
     texto.includes('turno') ||
     texto.includes('separar turno') ||
-    texto.includes('mañana') ||
-    texto.includes('manana') ||
     texto.includes('pasado mañana') ||
     texto.includes('pasado manana') ||
-    texto.includes('a las') ||
     texto.includes('quiero ir') ||
     texto.includes('puedo ir') ||
     texto.includes('generarme mi reserva') ||
@@ -155,8 +153,7 @@ function pareceNombreInvalido(msg) {
 }
 
 function esTelefonoValido(msg) {
-  const limpio = String(msg).replace(/\D/g, '');
-  return limpio.length >= 9;
+  return /\b9\d{8}\b/.test(String(msg || ''));
 }
 
 function respuestaDatoEsperado(paso) {
@@ -853,6 +850,8 @@ Por favor escríbeme tu nombre real.`
       };
     }
 
+    const telefonoLimpio = String(message).match(/\b9\d{8}\b/)?.[0];
+
     const clientes = await query(
       `
       SELECT *
@@ -861,7 +860,7 @@ Por favor escríbeme tu nombre real.`
       ORDER BY id DESC
       LIMIT 1
       `,
-      [message]
+      [telefonoLimpio]
     );
 
     if (clientes.length > 0) {
@@ -874,7 +873,7 @@ Por favor escríbeme tu nombre real.`
         WHERE usuario_id = ?
         `,
         [
-          message,
+          telefonoLimpio,
           cliente.cliente_nombre,
           cliente.vehiculo_texto,
           usuarioId
@@ -908,7 +907,7 @@ Por favor escríbeme tu nombre real.`
         SET telefono = ?, paso = ?
         WHERE usuario_id = ?
         `,
-        [message, siguientePaso, usuarioId]
+        [telefonoLimpio, siguientePaso, usuarioId]
       );
 
       return {
