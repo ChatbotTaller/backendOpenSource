@@ -144,11 +144,36 @@ function esPreguntaGeneral(msg) {
 function pareceNombreInvalido(msg) {
   const texto = normalizar(msg);
 
+  const palabrasProhibidas = [
+    'mierda',
+    'carajo',
+    'puta',
+    'putamadre',
+    'webon',
+    'huevon',
+    'idiota',
+    'imbecil',
+    'gil',
+    'ctm',
+    'ptm',
+    'xd'
+  ];
+
   return (
     esPreguntaGeneral(texto) ||
     texto.includes('ya lo sabes') ||
     texto.includes('me conoces') ||
-    texto.includes('no te acuerdas')
+    texto.includes('no te acuerdas') ||
+
+    texto === 'hola' ||
+    texto === 'hi' ||
+    texto === 'hello' ||
+    texto === 'buenas' ||
+    texto === 'agendar' ||
+    texto === 'cita' ||
+    texto === 'reservar' ||
+
+    palabrasProhibidas.some(p => texto.includes(p))
   );
 }
 
@@ -817,9 +842,11 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       return {
         success: false,
         reply:
-`Para registrar tu cita necesito confirmar tu nombre 😊
+    `Para registrar la cita necesito un nombre válido 😊
 
-Por favor escríbeme tu nombre real.`
+    Por favor escribe solo tu nombre.
+    Ejemplo:
+    Pablo`
       };
     }
 
