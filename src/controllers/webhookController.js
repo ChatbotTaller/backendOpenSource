@@ -4,6 +4,7 @@ const { guardarMetrica } = require('../services/metricsService');
 
 const { classifyIntent } = require('../agents/classifierAgent');
 const {obtenerHoraPeru, obtenerFechaActualPeru, obtenerDiaActualPeru} = require('../utils/time');
+const {obtenerContextoUsuario, guardarContextoUsuario} = require('../agents/contextAgent');
 const inventoryAgent = require('../agents/inventoryAgent');
 const servicesAgent = require('../agents/servicesAgent');
 const scheduleAgent = require('../agents/scheduleAgent');
@@ -269,6 +270,8 @@ async function procesarMensaje(req, res) {
 
     const { usuario, conversacion } = await getOrCreateSession(sessionId);
 
+    const contextoPersistente = await obtenerContextoUsuario(usuario.id);
+
     const telefonoDetectado = extraerTelefonoDesdeMensaje(userMsg);
 
     if (telefonoDetectado) {
@@ -439,7 +442,10 @@ async function procesarMensaje(req, res) {
       let citaResult = null;
 
       if (intent === "appointment" || estadoCitaTemporal) {
-        citaResult = await appointmentAgent(userMsg, usuario.id, lastContext);
+        citaResult = await appointmentAgent(userMsg, usuario.id, {
+          ...lastContext,
+          ...contextoPersistente
+        });
       }
 
     if (citaResult) {
@@ -555,6 +561,16 @@ async function procesarMensaje(req, res) {
     };
 
     await updateConversationContext(conversacion.id, intentFinal, nuevoContexto);
+
+    await guardarContextoUsuario(usuario.id, conversacion.id, {
+      nombre: usuario.nombre && usuario.nombre !== 'Visitante web' ? usuario.nombre : null,
+      telefono: telefonoDetectado || contextoPersistente?.telefono || null,
+      vehiculo: vehiculoDetectado || contextoPersistente?.vehiculo || lastContext?.vehiculo || null,
+      motivo: motivoDetectado || contextoPersistente?.motivo || lastContext?.motivo || null,
+      ultimo_intent: intentFinal,
+      ultimo_tema: agentResult?.keyword || motivoDetectado || vehiculoDetectado || null,
+      datos_json: nuevoContexto
+    });
 
     res.json({
       reply: respuestaIA,
