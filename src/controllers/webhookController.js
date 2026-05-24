@@ -4,6 +4,7 @@ const { guardarMetrica } = require('../services/metricsService');
 
 const { classifyIntent } = require('../agents/classifierAgent');
 const {obtenerHoraPeru, obtenerFechaActualPeru, obtenerDiaActualPeru} = require('../utils/time');
+const {obtenerContextoUsuario, guardarContextoUsuario} = require('../agents/contextAgent');
 const inventoryAgent = require('../agents/inventoryAgent');
 const servicesAgent = require('../agents/servicesAgent');
 const scheduleAgent = require('../agents/scheduleAgent');
@@ -236,7 +237,40 @@ async function procesarMensaje(req, res) {
 
     const sessionId = req.body.session_id || req.ip || "web_demo";
 
+    const textoFechaHora = String(userMsg || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+    if (
+      textoFechaHora.includes('que fecha es hoy') ||
+      textoFechaHora.includes('qué fecha es hoy') ||
+      textoFechaHora.includes('que fecha estamos') ||
+      textoFechaHora.includes('qué fecha estamos') ||
+      textoFechaHora.includes('que dia es hoy') ||
+      textoFechaHora.includes('qué día es hoy') ||
+      textoFechaHora.includes('hoy que dia es') ||
+      textoFechaHora.includes('que dia estamos') ||
+      textoFechaHora.includes('qué día estamos') ||
+      textoFechaHora.includes('hora actual') ||
+      textoFechaHora.includes('que hora es') ||
+      textoFechaHora.includes('qué hora es')
+    ) {
+      return res.json({
+        reply:
+    `📅 Fecha actual Perú:
+    ${obtenerDiaActualPeru()} ${obtenerFechaActualPeru()}
+
+    ⏰ Hora actual Perú:
+    ${obtenerHoraPeru()}`,
+        intent: 'datetime',
+        response_time_ms: Date.now() - inicio
+      });
+    }
+
     const { usuario, conversacion } = await getOrCreateSession(sessionId);
+
+    const contextoPersistente = await obtenerContextoUsuario(usuario.id);
 
     const telefonoDetectado = extraerTelefonoDesdeMensaje(userMsg);
 
@@ -356,13 +390,14 @@ async function procesarMensaje(req, res) {
       const pasoPermiteTextoLibre =
         paso === 'nombre' ||
         paso === 'vehiculo' ||
-        paso === 'motivo';
+        paso === 'motivo' ||
+        paso === 'confirmar_vehiculo';
 
       if (
         pareceConsultaExterna(intent) &&
         !mensajeEsFechaValida &&
         !mensajeEsTelefonoValido &&
-        paso !== 'motivo'
+        !pasoPermiteTextoLibre
       ) {
         const respuestaIA =
     `Primero terminemos de agendar tu cita 😊
@@ -372,6 +407,7 @@ async function procesarMensaje(req, res) {
     ${paso === 'telefono' ? '📞 tu número de teléfono' : ''}
     ${paso === 'vehiculo' ? '🚗 tu vehículo' : ''}
     ${paso === 'fecha' ? '📅 la fecha y hora de tu cita' : ''}
+    ${paso === 'confirmar_vehiculo' ? '🚗 confirmar si usarás el vehículo registrado' : ''}
 
     Luego con gusto respondo tu consulta adicional.`;
 
@@ -406,7 +442,10 @@ async function procesarMensaje(req, res) {
       let citaResult = null;
 
       if (intent === "appointment" || estadoCitaTemporal) {
-        citaResult = await appointmentAgent(userMsg, usuario.id, lastContext);
+        citaResult = await appointmentAgent(userMsg, usuario.id, {
+          ...lastContext,
+          ...contextoPersistente
+        });
       }
 
     if (citaResult) {
@@ -522,6 +561,16 @@ async function procesarMensaje(req, res) {
     };
 
     await updateConversationContext(conversacion.id, intentFinal, nuevoContexto);
+
+    await guardarContextoUsuario(usuario.id, conversacion.id, {
+      nombre: usuario.nombre && usuario.nombre !== 'Visitante web' ? usuario.nombre : null,
+      telefono: telefonoDetectado || contextoPersistente?.telefono || null,
+      vehiculo: vehiculoDetectado || contextoPersistente?.vehiculo || lastContext?.vehiculo || null,
+      motivo: motivoDetectado || contextoPersistente?.motivo || lastContext?.motivo || null,
+      ultimo_intent: intentFinal,
+      ultimo_tema: agentResult?.keyword || motivoDetectado || vehiculoDetectado || null,
+      datos_json: nuevoContexto
+    });
 
     res.json({
       reply: respuestaIA,

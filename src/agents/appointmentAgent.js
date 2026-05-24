@@ -389,7 +389,7 @@ function esFechaPasada(fecha, hora) {
 
 function obtenerDiaSemana(fecha) {
   const [y, m, d] = fecha.split('-').map(Number);
-  return new Date(y, m - 1, d).getDay();
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
 function validarHorario(fecha, hora) {
