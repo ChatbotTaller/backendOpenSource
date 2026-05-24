@@ -923,18 +923,21 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
+      const vehiculoGuardado = estado.vehiculo || lastContext?.vehiculo || null;
+      const motivoGuardado = estado.motivo || lastContext?.motivo || null;
+
       const siguientePaso =
-        estado.vehiculo && estado.motivo
+        vehiculoGuardado && motivoGuardado
           ? 'fecha'
           : 'vehiculo';
 
       await query(
         `
         UPDATE estado_cita_temporal
-        SET telefono = ?, paso = ?
+        SET telefono = ?, vehiculo = ?, motivo = ?, paso = ?
         WHERE usuario_id = ?
         `,
-        [telefonoLimpio, siguientePaso, usuarioId]
+        [telefonoLimpio, vehiculoGuardado, motivoGuardado, siguientePaso, usuarioId]
       );
 
       return {
