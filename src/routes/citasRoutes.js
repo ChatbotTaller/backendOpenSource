@@ -8,6 +8,17 @@ const {
   actualizarEstado
 } = require('../controllers/citasController');
 
+/**
+ * @swagger
+ * /citas:
+ *   get:
+ *     summary: Obtener citas
+ *     tags: [Citas]
+ *     responses:
+ *       200:
+ *         description: Lista de citas
+ */
+
 router.get('/citas', verificarToken, obtenerCitas);
 
 router.put(

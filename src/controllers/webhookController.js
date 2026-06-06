@@ -237,6 +237,10 @@ async function procesarMensaje(req, res) {
 
     const sessionId = req.body.session_id || req.ip || "web_demo";
 
+    const canal = req.body.canal || 'texto';
+    const sttExitoso = req.body.stt_exitoso ?? 1;
+    const ttsExitoso = req.body.tts_exitoso ?? 1;
+
     const textoFechaHora = String(userMsg || '')
     .toLowerCase()
     .normalize('NFD')
@@ -337,7 +341,10 @@ async function procesarMensaje(req, res) {
         pregunta: userMsg,
         respuesta: respuestaIA,
         intencion_detectada: "saludo",
-        tiempo_respuesta_ms: tiempoRespuesta
+        tiempo_respuesta_ms: tiempoRespuesta,
+        canal,
+        stt_exitoso: sttExitoso,
+        tts_exitoso: ttsExitoso
       });
 
       return res.json({
@@ -421,7 +428,10 @@ async function procesarMensaje(req, res) {
           pregunta: userMsg,
           respuesta: respuestaIA,
           intencion_detectada: "appointment_pending",
-          tiempo_respuesta_ms: tiempoRespuesta
+          tiempo_respuesta_ms: tiempoRespuesta,
+          canal,
+          stt_exitoso: sttExitoso,
+          tts_exitoso: ttsExitoso
         });
 
         return res.json({
@@ -542,7 +552,10 @@ async function procesarMensaje(req, res) {
       pregunta: userMsg,
       respuesta: respuestaIA,
       intencion_detectada: intent,
-      tiempo_respuesta_ms: tiempoRespuesta
+      tiempo_respuesta_ms: tiempoRespuesta,
+      canal,
+      stt_exitoso: sttExitoso,
+      tts_exitoso: ttsExitoso
     });
 
     const vehiculoDetectado = extraerVehiculoDesdeMensaje(userMsg);
