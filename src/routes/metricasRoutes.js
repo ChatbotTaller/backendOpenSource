@@ -7,7 +7,8 @@ const {
   obtenerMetricas,
   evaluarMetrica,
   obtenerResumenMetricas,
-  obtenerMetricasPorIntent
+  obtenerMetricasPorIntent,
+  obtenerMetricasVoz
 } = require('../controllers/metricasController');
 
 router.get(
@@ -32,6 +33,12 @@ router.get(
   '/metricas/por-intent',
   verificarToken,
   obtenerMetricasPorIntent
+);
+
+router.get(
+  '/metricas/voz',
+  verificarToken,
+  obtenerMetricasVoz
 );
 
 module.exports = router;
