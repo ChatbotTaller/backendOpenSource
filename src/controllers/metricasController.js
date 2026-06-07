@@ -187,9 +187,49 @@ function obtenerMetricasPorIntent(req, res) {
   });
 }
 
+function obtenerMetricasVoz(req, res) {
+  const sql = `
+    SELECT
+      SUM(CASE WHEN canal = 'voz' THEN 1 ELSE 0 END) AS total_voz,
+      SUM(CASE WHEN canal = 'texto' THEN 1 ELSE 0 END) AS total_texto,
+      ROUND(
+        (SUM(CASE WHEN canal = 'voz' AND stt_exitoso = 1 THEN 1 ELSE 0 END) /
+        NULLIF(SUM(CASE WHEN canal = 'voz' THEN 1 ELSE 0 END), 0)) * 100,
+        2
+      ) AS stt_exito_porcentaje,
+      ROUND(
+        (SUM(CASE WHEN canal = 'voz' AND tts_exitoso = 1 THEN 1 ELSE 0 END) /
+        NULLIF(SUM(CASE WHEN canal = 'voz' THEN 1 ELSE 0 END), 0)) * 100,
+        2
+      ) AS tts_exito_porcentaje,
+      ROUND(AVG(CASE WHEN canal = 'voz' THEN tiempo_respuesta_ms END), 2) AS tiempo_promedio_voz_ms
+    FROM metricas_chatbot
+  `;
+
+  db.query(sql, (err, results) => {
+    if (err) {
+      console.error("Error obteniendo métricas de voz:", err);
+      return res.status(500).json({
+        error: "Error obteniendo métricas de voz"
+      });
+    }
+
+    const data = results[0];
+
+    res.json({
+      total_voz: Number(data.total_voz || 0),
+      total_texto: Number(data.total_texto || 0),
+      stt_exito_porcentaje: Number(data.stt_exito_porcentaje || 0),
+      tts_exito_porcentaje: Number(data.tts_exito_porcentaje || 0),
+      tiempo_promedio_voz_ms: Number(data.tiempo_promedio_voz_ms || 0)
+    });
+  });
+}
+
 module.exports = {
   obtenerMetricas,
   evaluarMetrica,
   obtenerResumenMetricas,
-  obtenerMetricasPorIntent
+  obtenerMetricasPorIntent,
+  obtenerMetricasVoz
 };
