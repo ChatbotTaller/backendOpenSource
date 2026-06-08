@@ -574,6 +574,12 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
+    const telefonoFinal =
+      estado.telefono ||
+      lastContext?.telefono ||
+      usuarioActual?.telefono ||
+      null;
+
     const result = await query(
       `
       INSERT INTO citas
@@ -595,7 +601,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
         datosBloque.fecha,
         datosBloque.hora,
         datosBloque.nombre,
-        datosBloque.telefono,
+        telefonoFinal,
         datosBloque.vehiculo,
         datosBloque.motivo
       ]
@@ -697,13 +703,21 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
     const usuarioActual = await obtenerUsuario(usuarioId);
 
   if (nombreUsuarioValido(usuarioActual?.nombre)) {
+    
+      const telefonoGuardado =
+      lastContext?.telefono ||
+      usuarioActual?.telefono ||
+      null;
+
+    const pasoSiguiente = telefonoGuardado ? 'vehiculo' : 'telefono';
+    
     await query(
       `
       INSERT INTO estado_cita_temporal
       (usuario_id, paso, nombre)
-      VALUES (?, 'telefono', ?)
+      VALUES (?, ?, ?)
       `,
-      [usuarioId, usuarioActual.nombre]
+      [usuarioId, pasoSiguiente, usuarioActual.nombre]
     );
 
     const { fecha, hora } = extraerFechaHoraNatural(message);
@@ -722,11 +736,17 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
 
     return {
       success: true,
-      reply:
-  `Claro ${usuarioActual.nombre} 😊
-  Puedo ayudarte con tu cita.${mensajeFecha}
+      reply: telefonoGuardado
+        ? `Perfecto ${usuarioActual.nombre} 😊
 
-  Ahora envíame tu número de teléfono.`
+    Ya tengo tu número de teléfono registrado.
+
+    Ahora indícame la marca y modelo de tu vehículo.`
+        : `Claro ${usuarioActual.nombre} 😊
+
+    Puedo ayudarte con tu cita.${mensajeFecha}
+
+    Ahora envíame tu número de teléfono.`
     };
   }
 
@@ -1183,6 +1203,12 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
       };
     }
 
+    const telefonoFinal =
+      estado.telefono ||
+      lastContext?.telefono ||
+      usuarioActual?.telefono ||
+      null;
+
     const result = await query(
       `
       INSERT INTO citas
@@ -1204,7 +1230,7 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
         fecha,
         hora,
         estado.nombre,
-        estado.telefono,
+        telefonoFinal,
         estado.vehiculo,
         estado.motivo
       ]
@@ -1253,7 +1279,7 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
     try {
       const eventoGoogle = await crearEventoCita({
         cliente_nombre: estado.nombre,
-        cliente_telefono: estado.telefono,
+        cliente_telefono: telefonoFinal,
         vehiculo_texto: estado.vehiculo,
         motivo: estado.motivo,
         fecha,
@@ -1278,7 +1304,7 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
 `✅ Tu cita fue registrada correctamente.
 
 👤 Cliente: ${estado.nombre}
-📞 Teléfono: ${estado.telefono}
+📞 Teléfono: ${telefonoFinal}
 🚗 Vehículo: ${estado.vehiculo}
 🛠️ Servicio: ${estado.motivo}
 📅 Fecha: ${fecha}
