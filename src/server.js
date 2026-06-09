@@ -8,6 +8,7 @@ const authRoutes = require('./routes/authRoutes');
 const googleRoutes = require('./routes/googleRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
 const retellRoutes = require('./routes/retellRoutes');
+const livekitRoutes = require('./routes/livekitRoutes');
 
 const app = express();
 
@@ -20,6 +21,8 @@ app.use('/', authRoutes);
 app.use('/', googleRoutes);
 app.use('/', whatsappRoutes);
 app.use('/', retellRoutes);
+app.use('/retell', retellRoutes);
+app.use('/livekit', livekitRoutes);
 
 const PORT = process.env.PORT || 3000;
 

@@ -20,6 +20,7 @@
     "express": "^5.2.1",
     "googleapis": "^171.4.0",
     "jsonwebtoken": "^9.0.3",
+    "livekit-server-sdk": "^2.15.4",
     "moment-timezone": "^0.6.2",
     "mysql2": "^3.22.3",
     "openai": "^6.37.0",
