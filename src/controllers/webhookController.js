@@ -107,14 +107,39 @@ function esSaludo(message) {
   }
 
   function preguntaPorNombre(message) {
-    const msg = String(message || '').toLowerCase();
+    const msg = String(message || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
 
     return (
       msg.includes('como me llamo') ||
-      msg.includes('cómo me llamo') ||
+      msg.includes('como me llamaba') ||
+      msg.includes('como me llamabas') ||
       msg.includes('cual es mi nombre') ||
-      msg.includes('cuál es mi nombre') ||
-      msg.includes('sabes mi nombre')
+      msg.includes('sabes mi nombre') ||
+      msg.includes('recuerdas mi nombre') ||
+      msg.includes('te acuerdas de mi nombre') ||
+      msg.includes('dime mi nombre') ||
+      msg.includes('quien soy') ||
+      msg.includes('sabes quien soy')
+    );
+  }
+
+    function preguntaPorTelefono(message) {
+    const msg = String(message || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+    return (
+      msg.includes('cual es mi telefono') ||
+      msg.includes('cual es mi numero') ||
+      msg.includes('sabes mi telefono') ||
+      msg.includes('recuerdas mi telefono') ||
+      msg.includes('mi numero de celular') ||
+      msg.includes('mi celular') ||
+      msg.includes('que telefono tengo registrado')
     );
   }
 
@@ -289,6 +314,13 @@ async function procesarMensaje(req, res) {
       }
     }
 
+    if (telefonoDetectado) {
+      await guardarContextoUsuario(usuario.id, conversacion.id, {
+        ...contextoPersistente,
+        telefono: telefonoDetectado
+      });
+    }
+
     const nombreDetectado = extraerNombreDesdeMensaje(userMsg);
 
     if (nombreDetectado) {
@@ -303,6 +335,26 @@ async function procesarMensaje(req, res) {
         nombreGuardado && nombreGuardado !== 'Visitante web'
           ? `Sí 😊 Tu nombre registrado es ${nombreGuardado}.`
           : 'Aún no tengo tu nombre registrado. Puedes decirme: “mi nombre es Miguel”.';
+
+      const tiempoRespuesta = Date.now() - inicio;
+
+      await saveMessage(conversacion.id, "usuario", userMsg, "memory", null);
+      await saveMessage(conversacion.id, "bot", respuestaIA, "memory", tiempoRespuesta);
+
+      return res.json({
+        reply: respuestaIA,
+        intent: "memory",
+        response_time_ms: tiempoRespuesta
+      });
+    }
+
+    if (preguntaPorTelefono(userMsg)) {
+      const contextoActual = await obtenerContextoUsuario(usuario.id);
+      const telefonoGuardado = contextoActual?.telefono || null;
+
+      const respuestaIA = telefonoGuardado
+        ? `Sí 😊 Tu teléfono registrado es ${telefonoGuardado}.`
+        : 'Aún no tengo tu teléfono registrado. Para evitar errores, escríbelo en el chat de texto.';
 
       const tiempoRespuesta = Date.now() - inicio;
 
@@ -452,10 +504,12 @@ async function procesarMensaje(req, res) {
       let citaResult = null;
 
       if (intent === "appointment" || estadoCitaTemporal) {
-        citaResult = await appointmentAgent(userMsg, usuario.id, {
-          ...lastContext,
-          ...contextoPersistente
-        });
+      citaResult = await appointmentAgent(userMsg, usuario.id, {
+        ...lastContext,
+        ...contextoPersistente,
+        nombre: usuario.nombre || contextoPersistente?.nombre || lastContext?.nombre || null,
+        telefono: contextoPersistente?.telefono || usuario.telefono || lastContext?.telefono || null
+      });
       }
 
     if (citaResult) {
