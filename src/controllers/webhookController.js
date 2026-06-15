@@ -13,44 +13,47 @@ const appointmentAgent = require('../agents/appointmentAgent');
 
 const agentSkills = require('../agents/agentSkills');
 
-function esSaludo(message) {
-    const msg = message.toLowerCase();
+const {
+  extraerNombre,
+  extraerTelefono,
+  extraerVehiculo,
+  extraerMotivo
+} = require('../utils/dataExtractor');
+
+  function esSaludo(message) {
+    const msg = String(message || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[¿?¡!.,]/g, '')
+      .trim();
+
+    return [
+      'hola',
+      'buenas',
+      'buenos dias',
+      'buenas tardes',
+      'buenas noches'
+    ].includes(msg);
+  }
+
+  function esSaludoConversacional(message) {
+    const msg = String(message || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[¿?¡!.,]/g, '')
+      .trim();
 
     return (
-      msg === "hola" ||
-      msg === "buenas" ||
-      msg === "buenos dias" ||
-      msg === "buenos días" ||
-      msg === "buenas tardes" ||
-      msg === "buenas noches" ||
-      msg.includes("hola")
+      msg.includes('como estas') ||
+      msg.includes('que tal') ||
+      msg.includes('como te va') ||
+      msg.includes('como andas') ||
+      msg.includes('todo bien')
     );
   }
 
-  function extraerNombreDesdeMensaje(message) {
-  const msg = String(message || '').trim();
-
-  const patrones = [
-    /mi nombre es\s+([a-záéíóúñ\s]+)/i,
-    /me llamo\s+([a-záéíóúñ\s]+)/i,
-    /soy\s+([a-záéíóúñ\s]+)/i
-  ];
-
-  for (const patron of patrones) {
-    const match = msg.match(patron);
-
-    if (match && match[1]) {
-      return match[1]
-        .trim()
-        .replace(/[.,!?]/g, '')
-        .split(/\s+/)
-        .slice(0, 3)
-        .join(' ');
-    }
-  }
-
-  return null;
-}
 
   function guardarNombreUsuario(usuarioId, nombre) {
     return new Promise((resolve, reject) => {
@@ -101,10 +104,6 @@ function esSaludo(message) {
     });
   }
 
-  function extraerTelefonoDesdeMensaje(message) {
-    const match = String(message || '').match(/\b9\d{8}\b/);
-    return match ? match[0] : null;
-  }
 
   function preguntaPorNombre(message) {
     const msg = String(message || '')
@@ -143,56 +142,6 @@ function esSaludo(message) {
     );
   }
 
-    function extraerVehiculoDesdeMensaje(message) {
-    const msg = String(message || '');
-
-    const marcas = [
-      'toyota', 'nissan', 'hyundai', 'honda', 'kia',
-      'mazda', 'ford', 'chevrolet', 'mitsubishi',
-      'xpander', 'hilux', 'frontier', 'navara'
-    ];
-
-    const texto = msg.toLowerCase();
-
-    if (!marcas.some(marca => texto.includes(marca))) {
-      return null;
-    }
-
-    const match =
-      msg.match(/(?:tengo|cuento con|mi vehiculo es|mi carro es|para mi)\s+(.+?)(?:\s+y\s+|\s+con\s+|\s+esta\s+|\s+está\s+|$)/i);
-
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-
-    return msg.trim();
-  }
-
-  function extraerMotivoDesdeMensaje(message) {
-    const msg = String(message || '');
-    const texto = msg.toLowerCase();
-
-    const palabrasProblema = [
-      'averiado', 'averiada', 'falla', 'problema',
-      'reparar', 'arreglar', 'revision', 'revisión',
-      'cambio', 'mantenimiento', 'valvula', 'válvula',
-      'transmision', 'transmisión', 'motor', 'freno',
-      'aceite', 'suspension', 'suspensión'
-    ];
-
-    if (!palabrasProblema.some(p => texto.includes(p))) {
-      return null;
-    }
-
-    const match =
-      msg.match(/(?:averiado|averiada|falla|problema|reparar|arreglar|revision|revisión|cambio|mantenimiento)\s+(?:de\s+|la\s+|el\s+)?(.+)/i);
-
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-
-    return msg.trim();
-  }
 
   function obtenerPerfilCliente(usuarioId) {
     return new Promise((resolve, reject) => {
@@ -301,7 +250,23 @@ async function procesarMensaje(req, res) {
 
     const contextoPersistente = await obtenerContextoUsuario(usuario.id);
 
-    const telefonoDetectado = extraerTelefonoDesdeMensaje(userMsg);
+    if (esSaludoConversacional(userMsg)) {
+      const respuestaIA =
+        `Muy bien, gracias por preguntar 😊 ¿En qué puedo ayudarte hoy?`;
+
+      const tiempoRespuesta = Date.now() - inicio;
+
+      await saveMessage(conversacion.id, "usuario", userMsg, "saludo", null);
+      await saveMessage(conversacion.id, "bot", respuestaIA, "saludo", tiempoRespuesta);
+
+      return res.json({
+        reply: respuestaIA,
+        intent: "saludo",
+        response_time_ms: tiempoRespuesta
+      });
+    }
+
+    const telefonoDetectado = extraerTelefono(userMsg);
 
     if (telefonoDetectado) {
       const clienteGuardado = await obtenerClientePorTelefono(telefonoDetectado);
@@ -321,20 +286,44 @@ async function procesarMensaje(req, res) {
       });
     }
 
-    const nombreDetectado = extraerNombreDesdeMensaje(userMsg);
+    const textoNormalizado = String(userMsg || '')
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
 
-    if (nombreDetectado) {
+    const mensajeDeclaraNombre =
+      textoNormalizado.includes('mi nombre es') ||
+      textoNormalizado.includes('me llamo') ||
+      textoNormalizado.startsWith('soy ');
+
+    const nombreDetectado = mensajeDeclaraNombre
+      ? extraerNombre(userMsg)
+      : null;
+
+    if (
+      nombreDetectado &&
+      !esSaludo(userMsg) &&
+      nombreDetectado.toLowerCase() !== 'hola'
+    ) {
       await guardarNombreUsuario(usuario.id, nombreDetectado);
       usuario.nombre = nombreDetectado;
     }
 
     if (preguntaPorNombre(userMsg)) {
-      const nombreGuardado = await obtenerNombreUsuario(usuario.id);
+      const contextoActual = await obtenerContextoUsuario(usuario.id);
 
-      const respuestaIA =
-        nombreGuardado && nombreGuardado !== 'Visitante web'
-          ? `Sí 😊 Tu nombre registrado es ${nombreGuardado}.`
-          : 'Aún no tengo tu nombre registrado. Puedes decirme: “mi nombre es Miguel”.';
+      let nombreGuardado =
+        usuario.nombre ||
+        contextoActual?.nombre ||
+        null;
+
+      if (!nombreGuardado || nombreGuardado === 'Visitante web' || nombreGuardado === 'Sabes') {
+        nombreGuardado = null;
+      }
+
+      const respuestaIA = nombreGuardado
+        ? `Sí 😊 Tu nombre registrado es ${nombreGuardado}.`
+        : 'Aún no tengo tu nombre registrado. Puedes decirme: “mi nombre es Walter”.';
 
       const tiempoRespuesta = Date.now() - inicio;
 
@@ -350,11 +339,21 @@ async function procesarMensaje(req, res) {
 
     if (preguntaPorTelefono(userMsg)) {
       const contextoActual = await obtenerContextoUsuario(usuario.id);
-      const telefonoGuardado = contextoActual?.telefono || null;
 
-      const respuestaIA = telefonoGuardado
-        ? `Sí 😊 Tu teléfono registrado es ${telefonoGuardado}.`
-        : 'Aún no tengo tu teléfono registrado. Para evitar errores, escríbelo en el chat de texto.';
+      const telefonoGuardado =
+        extraerTelefono(usuario.telefono) ||
+        extraerTelefono(contextoActual?.telefono) ||
+        null;
+
+      const telefonoParaVoz = telefonoGuardado
+      ? telefonoGuardado.split('').join(' ')
+      : null;
+
+    const respuestaIA = telefonoGuardado
+      ? canal.includes('voz')
+        ? `Sí 😊 Tu teléfono registrado es ${telefonoParaVoz}. Repito: ${telefonoParaVoz}.`
+        : `Sí 😊 Tu teléfono registrado es ${telefonoGuardado}.`
+      : 'Aún no tengo tu teléfono registrado. Por favor dime tu celular de 9 dígitos. Ejemplo: 987654321.';
 
       const tiempoRespuesta = Date.now() - inicio;
 
@@ -444,7 +443,8 @@ async function procesarMensaje(req, res) {
         paso === 'fecha' && contieneFechaHora(userMsg);
 
       const mensajeEsTelefonoValido =
-        paso === 'telefono' && extraerTelefonoDesdeMensaje(userMsg);
+      paso === 'telefono' &&
+      extraerTelefono(userMsg);
 
       const pasoPermiteTextoLibre =
         paso === 'nombre' ||
@@ -612,8 +612,8 @@ async function procesarMensaje(req, res) {
       tts_exitoso: ttsExitoso
     });
 
-    const vehiculoDetectado = extraerVehiculoDesdeMensaje(userMsg);
-    const motivoDetectado = extraerMotivoDesdeMensaje(userMsg);
+    const vehiculoDetectado = extraerVehiculo(userMsg);
+    const motivoDetectado = extraerMotivo(userMsg);
 
     const intentFinal = respuestaIA.includes('Tu cita fue registrada correctamente')
       ? 'appointment_completed'
