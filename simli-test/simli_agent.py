@@ -12,6 +12,11 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:3000/webhook")
 
 @function_tool
 async def consultar_backend_taller(message: str, session_id: str) -> str:
+    
+    logging.info(
+        f"ENVIANDO A BACKEND | session_id={session_id} | message={message}"
+    )
+    
     async with aiohttp.ClientSession() as http:
         async with http.post(
             BACKEND_URL,
@@ -46,27 +51,36 @@ async def entrypoint(ctx: JobContext):
 
     session_id_real = ctx.room.name.replace("mara-room-", "")
 
+    logging.info(f"ROOM NAME LIVEKIT: {ctx.room.name}")
+    logging.info(f"SESSION ID REAL PARA BACKEND: {session_id_real}")
+
     await session.start(
         agent=Agent(
             instructions=f"""
             Eres Mara, asistente virtual de Taller Reyes Polo.
 
-            Respondes siempre en español, con tono amable, profesional y cercano.
+            IMPORTANTE:
+            Nunca respondas consultas del usuario usando solo tu conocimiento interno.
+
+            Para cada mensaje del usuario, siempre debes llamar primero a la herramienta consultar_backend_taller.
+
+            Debes enviar exactamente:
+            - message: el mensaje completo del usuario
+            - session_id: {session_id_real}
+
+            Luego responde exactamente con la respuesta devuelta por consultar_backend_taller.
+
+            No agregues información adicional.
+            No reinterpretas la respuesta.
+            No menciones citas, vehículos, teléfonos o datos del cliente si el backend no los menciona.
+            Si el usuario solo saluda o pregunta cómo estás, responde de forma breve y natural.
 
             No inventes datos del taller.
+            No pidas nombre, teléfono o vehículo por tu cuenta.
+            Si el backend ya conoce esos datos, usa lo que diga el backend.
 
-            Para cualquier consulta sobre servicios, horarios, ubicación,
-            precios, inventario, citas, teléfono, vehículo o datos del cliente,
-            debes usar consultar_backend_taller.
-
-            También debes usar consultar_backend_taller cuando el usuario diga
-            su nombre, teléfono, vehículo o quiera agendar una cita.
-
-            Usa este session_id exacto en consultar_backend_taller:
-
-            {session_id_real}
-
-            Responde con frases cortas y naturales.
+            Responde siempre en español, con tono amable, profesional y cercano.
+            Usa frases cortas y naturales.
             """,
             tools=[consultar_backend_taller]
         ),

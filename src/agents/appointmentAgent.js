@@ -1,6 +1,14 @@
 const db = require('../config/database');
 const { crearEventoCita } = require('../services/googleCalendarService');
 
+const {
+  extraerTelefono,
+  telefonoValido,
+  extraerNombre,
+  extraerVehiculo,
+  extraerMotivo
+} = require('../utils/dataExtractor');
+
 function query(sql, params = []) {
   return new Promise((resolve, reject) => {
     db.query(sql, params, (err, results) => {
@@ -64,14 +72,45 @@ function detectarIntencionCita(msg) {
 }
 
 function quiereCancelarFlujo(msg) {
-  msg = msg.toLowerCase();
+  const texto = normalizar(msg);
 
   return (
-    msg.includes("cancelar") ||
-    msg.includes("salir") ||
-    msg.includes("detener") ||
-    msg.includes("terminar cita") ||
-    msg.includes("cancelar cita")
+    texto.includes('cancelar proceso') ||
+    texto.includes('cancelar agendamiento') ||
+    texto.includes('cancelar la reserva') ||
+    texto.includes('ya no quiero agendar') ||
+    texto.includes('ya no deseo agendar') ||
+    texto.includes('no quiero agendar') ||
+    texto.includes('no deseo registrar cita') ||
+    texto.includes('salir del agendamiento') ||
+    texto.includes('detener agendamiento')
+  );
+}
+
+function rechazaAgendamiento(msg) {
+  const texto = normalizar(msg);
+
+  return (
+    texto.includes('no quiero cita') ||
+    texto.includes('no quiero agendar') ||
+    texto.includes('no necesito agendar') ||
+    texto.includes('no deseo agendar') ||
+    texto.includes('no deseo cita') ||
+    texto.includes('no necesito cita') ||
+    texto.includes('no quiero registrar cita') ||
+    texto.includes('solo quiero consultar') ||
+    texto.includes('solo quiero saber')
+  );
+}
+
+function quiereCancelarCitaExistente(msg) {
+  const texto = normalizar(msg);
+
+  return (
+    texto.includes('cancelar mi cita') ||
+    texto.includes('cancelar cita') ||
+    texto.includes('anular mi cita') ||
+    texto.includes('eliminar mi cita')
   );
 }
 
@@ -178,7 +217,8 @@ function pareceNombreInvalido(msg) {
 }
 
 function esTelefonoValido(msg) {
-  return /\b9\d{8}\b/.test(String(msg || ''));
+  const telefono = extraerTelefono(msg);
+  return telefonoValido(telefono);
 }
 
 function respuestaDatoEsperado(paso) {
@@ -312,56 +352,70 @@ function extraerFechaHoraNatural(msg) {
   return { fecha, hora };
 }
 
-function extraerDatosCitaEnBloque(message) {
-  const lineas = String(message)
-    .split('\n')
-    .map(l => l.trim())
-    .filter(Boolean);
+  function extraerDatosCitaEnBloque(message) {
+    const lineas = String(message)
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
 
-  const texto = normalizar(message);
-  const { fecha, hora } = extraerFechaHoraNatural(message);
+    const { fecha, hora } = extraerFechaHoraNatural(message);
+    const telefono = extraerTelefono(message);
 
-  const telefonoMatch = message.match(/\b9\d{8}\b/);
-  const telefono = telefonoMatch ? telefonoMatch[0] : null;
+    let nombre = null;
+    let vehiculo = null;
+    let motivo = null;
 
-  let nombre = null;
-  let vehiculo = null;
-  let motivo = null;
+    if (lineas.length >= 4) {
+      const lineaNombre = lineas.find(l =>
+        normalizar(l).includes('nombre') ||
+        normalizar(l).includes('me llamo') ||
+        normalizar(l).includes('soy')
+      ) || lineas[0];
 
-  if (lineas.length >= 4) {
-    nombre = lineas[0];
-    vehiculo = lineas.find(l =>
-      normalizar(l).includes('toyota') ||
-      normalizar(l).includes('nissan') ||
-      normalizar(l).includes('hyundai') ||
-      normalizar(l).includes('honda') ||
-      normalizar(l).includes('kia') ||
-      normalizar(l).includes('mazda') ||
-      normalizar(l).includes('ford') ||
-      normalizar(l).includes('chevrolet')
-    );
+      const lineaVehiculo = lineas.find(l =>
+        normalizar(l).includes('toyota') ||
+        normalizar(l).includes('nissan') ||
+        normalizar(l).includes('hyundai') ||
+        normalizar(l).includes('honda') ||
+        normalizar(l).includes('kia') ||
+        normalizar(l).includes('mazda') ||
+        normalizar(l).includes('ford') ||
+        normalizar(l).includes('chevrolet') ||
+        normalizar(l).includes('mitsubishi') ||
+        normalizar(l).includes('vehiculo') ||
+        normalizar(l).includes('vehículo') ||
+        normalizar(l).includes('carro')
+      );
 
-    motivo = lineas.find(l =>
-      normalizar(l).includes('cambio') ||
-      normalizar(l).includes('revision') ||
-      normalizar(l).includes('mantenimiento') ||
-      normalizar(l).includes('motor') ||
-      normalizar(l).includes('freno') ||
-      normalizar(l).includes('aceite') ||
-      normalizar(l).includes('filtro')
-    );
+      const lineaMotivo = lineas.find(l =>
+        normalizar(l).includes('cambio') ||
+        normalizar(l).includes('revision') ||
+        normalizar(l).includes('revisión') ||
+        normalizar(l).includes('mantenimiento') ||
+        normalizar(l).includes('motor') ||
+        normalizar(l).includes('freno') ||
+        normalizar(l).includes('aceite') ||
+        normalizar(l).includes('filtro') ||
+        normalizar(l).includes('problema') ||
+        normalizar(l).includes('falla') ||
+        normalizar(l).includes('reparar')
+      );
+
+      nombre = extraerNombre(lineaNombre);
+      vehiculo = extraerVehiculo(lineaVehiculo);
+      motivo = extraerMotivo(lineaMotivo);
+    }
+
+    return {
+      nombre,
+      telefono,
+      vehiculo,
+      motivo,
+      fecha,
+      hora,
+      completo: Boolean(nombre && telefono && vehiculo && motivo && fecha && hora)
+    };
   }
-
-  return {
-    nombre,
-    telefono,
-    vehiculo,
-    motivo,
-    fecha,
-    hora,
-    completo: Boolean(nombre && telefono && vehiculo && motivo && fecha && hora)
-  };
-}
 
 function minutos(hora) {
   const [h, m] = hora.split(':').map(Number);
@@ -542,6 +596,81 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
 
     const datosBloque = extraerDatosCitaEnBloque(message);
 
+    if (rechazaAgendamiento(message)) {
+      await query(
+        `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
+        [usuarioId]
+      );
+
+      return {
+        success: true,
+        reply:
+    `Entendido 😊
+
+    No voy a continuar con el agendamiento.
+
+    Puedes consultarme sobre horarios, servicios, repuestos o información del taller.`
+      };
+    }
+
+    if (quiereCancelarCitaExistente(message)) {
+      const { fecha, hora } = extraerFechaHoraNatural(message);
+      const telefono = extraerTelefono(message) || lastContext?.telefono || null;
+
+      if (!fecha || !hora || !telefono) {
+        return {
+          success: true,
+          reply:
+    `Claro, puedo ayudarte a cancelar tu cita.
+
+    Necesito estos datos:
+    📞 Teléfono
+    📅 Fecha
+    ⏰ Hora
+
+    Ejemplo:
+    Cancelar mi cita del 2026-06-15 a las 10:00 con teléfono 987654321`
+        };
+      }
+
+      const result = await query(
+        `
+        UPDATE citas
+        SET estado = 'cancelada'
+        WHERE fecha = ?
+        AND hora = ?
+        AND cliente_telefono = ?
+        AND estado != 'cancelada'
+        `,
+        [fecha, hora, telefono]
+      );
+
+      await query(
+        `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
+        [usuarioId]
+      );
+
+      if (result.affectedRows > 0) {
+        return {
+          success: true,
+          reply:
+    `✅ Tu cita fue cancelada correctamente.
+
+    📞 Teléfono: ${telefono}
+    📅 Fecha: ${fecha}
+    ⏰ Hora: ${hora}`
+        };
+      }
+
+      return {
+        success: false,
+        reply:
+    `No encontré una cita activa con esos datos.
+
+    Verifica teléfono, fecha y hora, por favor.`
+      };
+    }
+
   if (datosBloque.completo) {
     if (esFechaPasada(datosBloque.fecha, datosBloque.hora)) {
       return {
@@ -574,11 +703,19 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
-    const telefonoFinal =
-      estado.telefono ||
-      lastContext?.telefono ||
-      usuarioActual?.telefono ||
-      null;
+    const telefonoFinal = datosBloque.telefono || lastContext?.telefono || null;
+
+    if (!telefonoFinal) {
+      return {
+        success: false,
+        reply:
+    `Me falta tu número de teléfono para registrar la cita 📞
+
+    Por favor dime tu celular de 9 dígitos.
+    Ejemplo:
+    987654321`
+      };
+    }
 
     const result = await query(
       `
@@ -625,7 +762,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       `,
       [
         datosBloque.nombre,
-        datosBloque.telefono,
+        telefonoFinal,
         datosBloque.vehiculo,
         datosBloque.motivo
       ]
@@ -637,7 +774,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       SET nombre = ?, telefono = ?
       WHERE id = ?
       `,
-      [datosBloque.nombre, datosBloque.telefono, usuarioId]
+      [datosBloque.nombre, telefonoFinal, usuarioId]
     );
 
     await query(
@@ -648,7 +785,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
     try {
       const eventoGoogle = await crearEventoCita({
         cliente_nombre: datosBloque.nombre,
-        cliente_telefono: datosBloque.telefono,
+        cliente_telefono: telefonoFinal,
         vehiculo_texto: datosBloque.vehiculo,
         motivo: datosBloque.motivo,
         fecha: datosBloque.fecha,
@@ -671,7 +808,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
   `✅ Tu cita fue registrada correctamente.
 
   👤 Cliente: ${datosBloque.nombre}
-  📞 Teléfono: ${datosBloque.telefono}
+  📞 Teléfono: ${telefonoFinal}
   🚗 Vehículo: ${datosBloque.vehiculo}
   🛠️ Servicio: ${datosBloque.motivo}
   📅 Fecha: ${datosBloque.fecha}
@@ -703,50 +840,77 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
     const usuarioActual = await obtenerUsuario(usuarioId);
 
   if (nombreUsuarioValido(usuarioActual?.nombre)) {
-    
-      const telefonoGuardado =
+    const telefonoGuardado =
       lastContext?.telefono ||
       usuarioActual?.telefono ||
       null;
 
+    const vehiculoGuardado =
+      lastContext?.vehiculo ||
+      null;
+
+    if (telefonoGuardado && vehiculoGuardado) {
+      await query(
+        `
+        INSERT INTO estado_cita_temporal
+        (usuario_id, paso, nombre, telefono, vehiculo)
+        VALUES (?, 'confirmar_vehiculo', ?, ?, ?)
+        `,
+        [
+          usuarioId,
+          usuarioActual.nombre,
+          telefonoGuardado,
+          vehiculoGuardado
+        ]
+      );
+
+      return {
+        success: true,
+        reply:
+  `Perfecto ${usuarioActual.nombre} 😊
+
+  Ya tengo tus datos registrados.
+
+  📞 Teléfono: ${telefonoGuardado}
+  🚗 Vehículo registrado: ${vehiculoGuardado}
+
+  ¿Deseas usar este vehículo para la cita?
+
+  1. Sí, usar este vehículo
+  2. No, registrar otro vehículo`
+      };
+    }
+
     const pasoSiguiente = telefonoGuardado ? 'vehiculo' : 'telefono';
-    
+
     await query(
       `
       INSERT INTO estado_cita_temporal
-      (usuario_id, paso, nombre)
-      VALUES (?, ?, ?)
+      (usuario_id, paso, nombre, telefono, vehiculo)
+      VALUES (?, ?, ?, ?, ?)
       `,
-      [usuarioId, pasoSiguiente, usuarioActual.nombre]
+      [
+        usuarioId,
+        pasoSiguiente,
+        usuarioActual.nombre,
+        telefonoGuardado,
+        vehiculoGuardado
+      ]
     );
-
-    const { fecha, hora } = extraerFechaHoraNatural(message);
-
-    let mensajeFecha = '';
-
-    if (fecha && hora) {
-      mensajeFecha = `
-
-  Ya entendí que deseas la cita para:
-   ${fecha}
-   ${hora}
-
-  Primero necesito completar tus datos.`;
-    }
 
     return {
       success: true,
       reply: telefonoGuardado
         ? `Perfecto ${usuarioActual.nombre} 😊
 
-    Ya tengo tu número de teléfono registrado.
+  Ya tengo tu número de teléfono registrado.
 
-    Ahora indícame la marca y modelo de tu vehículo.`
+  Ahora indícame la marca y modelo de tu vehículo.`
         : `Claro ${usuarioActual.nombre} 😊
 
-    Puedo ayudarte con tu cita.${mensajeFecha}
+  Puedo ayudarte con tu cita.
 
-    Ahora envíame tu número de teléfono.`
+  Ahora envíame tu número de teléfono.`
     };
   }
 
@@ -870,13 +1034,27 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
+    const nombreLimpio = extraerNombre(message);
+
+    if (!nombreLimpio || pareceNombreInvalido(nombreLimpio)) {
+      return {
+        success: false,
+        reply:
+    `Para registrar la cita necesito un nombre válido 😊
+
+    Por favor dime solo tu nombre.
+    Ejemplo:
+    Miguel`
+      };
+    }
+
     await query(
       `
       UPDATE estado_cita_temporal
       SET nombre = ?, paso = 'telefono'
       WHERE usuario_id = ?
       `,
-      [message, usuarioId]
+      [nombreLimpio, usuarioId]
     );
 
     return {
@@ -897,7 +1075,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
-    const telefonoLimpio = String(message).match(/\b9\d{8}\b/)?.[0];
+    const telefonoLimpio = extraerTelefono(message);
 
     const clientes = await query(
       `
@@ -1040,22 +1218,24 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
-    let vehiculoFinal = message;
+    let vehiculoFinal = null;
 
     if (esRespuestaDeContexto(message)) {
       vehiculoFinal = lastContext?.vehiculo || estado.vehiculo || null;
+    } else {
+      vehiculoFinal = extraerVehiculo(message);
+    }
 
-      if (!vehiculoFinal) {
-        return {
-          success: false,
-          reply:
-  `Aún no tengo claro tu vehículo 😅
+    if (!vehiculoFinal) {
+      return {
+        success: false,
+        reply:
+  `No pude reconocer bien tu vehículo 😅
 
-  Por favor indícame la marca y modelo.
+  Por favor dime la marca y modelo.
   Ejemplo:
-  Mitsubishi Xpander`
-        };
-      }
+  Toyota Yaris`
+      };
     }
 
     await query(
@@ -1107,22 +1287,24 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
       };
     }
 
-    let motivoFinal = message;
+    let motivoFinal = null;
 
     if (esRespuestaDeContexto(message)) {
       motivoFinal = lastContext?.motivo || estado.motivo || null;
+    } else {
+      motivoFinal = extraerMotivo(message);
+    }
 
-      if (!motivoFinal) {
-        return {
-          success: false,
-          reply:
-  `Aún no tengo claro el servicio o problema 😅
+    if (!motivoFinal) {
+      return {
+        success: false,
+        reply:
+  `No pude reconocer bien el servicio o problema 😅
 
-  Por favor indícame qué deseas atender.
+  Por favor dime qué deseas atender.
   Ejemplo:
-  Válvula de transmisión`
-        };
-      }
+  Cambio de aceite`
+      };
     }
 
     await query(
@@ -1203,11 +1385,19 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
       };
     }
 
-    const telefonoFinal =
-      estado.telefono ||
-      lastContext?.telefono ||
-      usuarioActual?.telefono ||
-      null;
+    const telefonoFinal = estado.telefono || lastContext?.telefono || null;
+
+    if (!telefonoFinal) {
+      return {
+        success: false,
+        reply:
+    `Me falta tu número de teléfono para registrar la cita 📞
+
+    Por favor dime tu celular de 9 dígitos.
+    Ejemplo:
+    987654321`
+      };
+    }
 
     const result = await query(
       `
@@ -1254,7 +1444,7 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
       `,
       [
         estado.nombre,
-        estado.telefono,
+        telefonoFinal,
         estado.vehiculo,
         estado.motivo
       ]
@@ -1266,7 +1456,7 @@ ${sugerencias.length ? sugerencias.map(h => `- ${fecha} ${h}`).join('\n') : 'No 
       SET nombre = ?, telefono = ?
       WHERE id = ?
       `,
-      [estado.nombre, estado.telefono, usuarioId]
+      [estado.nombre, telefonoFinal, usuarioId]
     );
 
     await query(
