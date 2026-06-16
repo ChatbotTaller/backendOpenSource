@@ -102,30 +102,63 @@ function limpiarNombre(texto) {
     .replace(/\b\w/g, l => l.toUpperCase());
 }
 
-function extraerVehiculo(texto) {
-  const msg = limpiarTexto(texto);
+  function extraerVehiculo(texto) {
+    const msg = limpiarTexto(texto);
+    const textoNormalizado = normalizar(msg);
 
-  const patrones = [
-    /mi vehiculo es\s+(.+)/i,
-    /mi vehículo es\s+(.+)/i,
-    /mi carro es\s+(.+)/i,
-    /tengo un\s+(.+)/i,
-    /tengo una\s+(.+)/i,
-    /tengo\s+(.+)/i,
-    /vehiculo\s+(.+)/i,
-    /vehículo\s+(.+)/i,
-    /carro\s+(.+)/i
-  ];
+    const palabrasServicio = [
+      'revision', 'mantenimiento', 'suspension',
+      'motor', 'freno', 'aceite', 'falla',
+      'problema', 'reparar', 'arreglar',
+      'cita', 'agendar', 'reservar', 'servicio',
+      'agendamiento', 'agenda', 'agendada', 'agendado',
+      'turno', 'reserva'
+    ];
 
-  for (const patron of patrones) {
-    const match = msg.match(patron);
-    if (match && match[1]) {
-      return limpiarVehiculo(match[1]);
+    const marcasVehiculo = [
+      'toyota', 'nissan', 'hyundai', 'honda', 'kia',
+      'mazda', 'ford', 'chevrolet', 'mitsubishi',
+      'suzuki', 'volkswagen', 'renault', 'chery',
+      'hilux', 'yaris', 'corolla', 'sentra', 'versa',
+      'frontier', 'navara', 'central'
+    ];
+
+    const tieneMarcaVehiculo = marcasVehiculo.some(marca =>
+      textoNormalizado.includes(marca)
+    );
+
+    const pareceServicio = palabrasServicio.some(p =>
+      textoNormalizado.includes(p)
+    );
+
+    if (pareceServicio && !tieneMarcaVehiculo) {
+      return null;
     }
-  }
 
-  return limpiarVehiculo(msg);
-}
+    const patrones = [
+      /mi vehiculo es\s+(.+)/i,
+      /mi vehículo es\s+(.+)/i,
+      /mi carro es\s+(.+)/i,
+      /tengo un\s+(.+)/i,
+      /tengo una\s+(.+)/i,
+      /vehiculo\s+(.+)/i,
+      /vehículo\s+(.+)/i,
+      /carro\s+(.+)/i
+    ];
+
+    for (const patron of patrones) {
+      const match = msg.match(patron);
+      if (match && match[1]) {
+        return limpiarVehiculo(match[1]);
+      }
+    }
+
+    if (tieneMarcaVehiculo) {
+      return limpiarVehiculo(msg);
+    }
+
+    return null;
+  }
 
 function limpiarVehiculo(texto) {
   let vehiculo = limpiarTexto(texto)
