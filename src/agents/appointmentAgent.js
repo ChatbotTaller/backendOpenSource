@@ -259,76 +259,77 @@ function extraerFechaHoraNatural(msg) {
   let fecha = extraerFecha(msg);
   let hora = extraerHora(msg);
 
-  if (!fecha) {
-    let fechaObj = null;
+if (!fecha) {
+  let fechaObj = null;
 
-    if (texto.includes('pasado manana') || texto.includes('pasado mañana')) {
-      fechaObj = new Date(ahora);
-      fechaObj.setDate(fechaObj.getDate() + 2);
+  // 1. PRIORIDAD: fechas explícitas tipo "18 de junio"
+  const matchFecha = texto.match(/(\d{1,2})\s+de\s+([a-z]+)/);
 
-    } else if (texto.includes('manana') || texto.includes('mañana')) {
-      fechaObj = new Date(ahora);
-      fechaObj.setDate(fechaObj.getDate() + 1);
+  if (matchFecha && meses[matchFecha[2]] !== undefined) {
+    const dia = Number(matchFecha[1]);
+    const mes = meses[matchFecha[2]];
+    const anio = ahora.getFullYear();
 
-    } else {
-      const matchDiaSemanaNumero = texto.match(
-        /\b(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(\d{1,2})\b/
-      );
+    if (!fechaValidaReal(anio, mes, dia)) {
+      return { fecha: null, hora };
+    }
 
-      if (matchDiaSemanaNumero) {
-        const dia = Number(matchDiaSemanaNumero[2]);
-        let mes = ahora.getMonth();
-        let anio = ahora.getFullYear();
+    fechaObj = new Date(anio, mes, dia);
+
+    if (fechaObj < new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())) {
+      fechaObj.setFullYear(anio + 1);
+    }
+
+  // 2. Luego recién fechas relativas
+  } else if (texto.includes('pasado manana') || texto.includes('pasado mañana')) {
+    fechaObj = new Date(ahora);
+    fechaObj.setDate(fechaObj.getDate() + 2);
+
+  } else if (texto.includes('manana') || texto.includes('mañana')) {
+    fechaObj = new Date(ahora);
+    fechaObj.setDate(fechaObj.getDate() + 1);
+
+  // 3. Finalmente casos tipo "jueves 18" sin mes
+  } else {
+    const matchDiaSemanaNumero = texto.match(
+      /\b(lunes|martes|miercoles|miércoles|jueves|viernes|sabado|sábado|domingo)\s+(\d{1,2})\b/
+    );
+
+    if (matchDiaSemanaNumero) {
+      const dia = Number(matchDiaSemanaNumero[2]);
+      let mes = ahora.getMonth();
+      let anio = ahora.getFullYear();
+
+      if (!fechaValidaReal(anio, mes, dia)) {
+        return { fecha: null, hora };
+      }
+
+      fechaObj = new Date(anio, mes, dia);
+
+      if (fechaObj < new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())) {
+        mes += 1;
+
+        if (mes > 11) {
+          mes = 0;
+          anio += 1;
+        }
 
         if (!fechaValidaReal(anio, mes, dia)) {
           return { fecha: null, hora };
         }
 
         fechaObj = new Date(anio, mes, dia);
-
-        if (fechaObj < new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())) {
-          mes += 1;
-
-          if (mes > 11) {
-            mes = 0;
-            anio += 1;
-          }
-
-          if (!fechaValidaReal(anio, mes, dia)) {
-            return { fecha: null, hora };
-          }
-
-          fechaObj = new Date(anio, mes, dia);
-        }
-
-      } else {
-        const matchFecha = texto.match(/(\d{1,2})\s+de\s+([a-z]+)/);
-
-        if (matchFecha && meses[matchFecha[2]] !== undefined) {
-          const dia = Number(matchFecha[1]);
-          const mes = meses[matchFecha[2]];
-          const anio = ahora.getFullYear();
-
-          if (!fechaValidaReal(anio, mes, dia)) {
-            return { fecha: null, hora };
-          }
-
-          fechaObj = new Date(anio, mes, dia);
-
-          if (fechaObj < new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate())) {
-            fechaObj.setFullYear(anio + 1);
-          }
-        }
       }
     }
-
-    if (fechaObj) {
-      const y = fechaObj.getFullYear();
-      const m = String(fechaObj.getMonth() + 1).padStart(2, '0');
-      const d = String(fechaObj.getDate()).padStart(2, '0');
-      fecha = `${y}-${m}-${d}`;
-    }
   }
+
+  if (fechaObj) {
+    const y = fechaObj.getFullYear();
+    const m = String(fechaObj.getMonth() + 1).padStart(2, '0');
+    const d = String(fechaObj.getDate()).padStart(2, '0');
+    fecha = `${y}-${m}-${d}`;
+  }
+}
 
   if (!hora) {
     const matchHora =
@@ -621,6 +622,8 @@ async function validarDisponibilidad(fecha, hora) {
   if (!horarioResult.valido) {
     return { ok: false, reply: horarioResult.mensaje };
   }
+
+  console.log('🧪 VALIDANDO CHOQUE:', { fecha, hora });
 
   const ocupado = await existeChoqueHorario(fecha, hora);
   if (ocupado) {
@@ -1150,6 +1153,12 @@ Ejemplo:
     }
 
     const { fecha, hora } = extraerFechaHoraNatural(message);
+
+    console.log('🧪 FECHA/HORA DETECTADA:', {
+      mensaje: message,
+      fecha,
+      hora
+    });
 
     if (!fecha || !hora) {
       return {

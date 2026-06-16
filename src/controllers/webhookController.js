@@ -201,19 +201,39 @@ function preguntaPorCitaExistente(mensaje) {
   const msg = normalizarBase(mensaje);
 
   return (
-    msg.includes('tengo alguna cita') ||
-    msg.includes('tengo alguna cita agendada') ||
-    msg.includes('tengo cita agendada') ||
-    msg.includes('alguna cita agendada') ||
-    msg.includes('cita agendada') ||
     msg.includes('tengo una cita') ||
     msg.includes('tengo cita') ||
+    msg.includes('tengo alguna cita') ||
+    msg.includes('tengo algun agendamiento') ||
+    msg.includes('tengo algún agendamiento') ||
+
     msg.includes('cuando es mi cita') ||
     msg.includes('cuando tengo cita') ||
+    msg.includes('cuando tengo mi cita') ||
+
     msg.includes('mi cita') ||
+    msg.includes('mis citas') ||
+    msg.includes('mis citas agendadas') ||
+    msg.includes('citas agendadas') ||
+    msg.includes('citas pendientes') ||
+
+    msg.includes('que citas tengo') ||
+    msg.includes('qué citas tengo') ||
+    msg.includes('quiero saber mis citas') ||
+    msg.includes('quiero ver mis citas') ||
     msg.includes('ver mi cita') ||
-    msg.includes('consultar mi cita')
+    msg.includes('ver mis citas') ||
+    msg.includes('consultar mi cita') ||
+    msg.includes('consultar mis citas')
   );
+}
+
+function quiereCancelarCitaPorNumero(mensaje) {
+  const msg = normalizarBase(mensaje);
+
+  const match = msg.match(/cancelar\s+(?:la\s+)?cita\s+(\d+)/);
+
+  return match ? Number(match[1]) : null;
 }
 
 // ─────────────────────────────────────────────
@@ -551,16 +571,58 @@ Tu última consulta fue sobre:
       });
     }
 
-    // ── 12. Consulta de cita ya existente ──
-    if (preguntaPorCitaExistente(userMsg)) {
+    // ── 11.5 Cancelar cita por número ──
+    const numeroCitaACancelar = quiereCancelarCitaPorNumero(userMsg);
+
+    if (numeroCitaACancelar) {
       const citas = await query(
         `
-        SELECT fecha, hora, estado, motivo, cliente_nombre, cliente_telefono, vehiculo_texto
+        SELECT id, fecha, hora, motivo, vehiculo_texto
         FROM citas
         WHERE usuario_id = ?
           AND estado IN ('pendiente', 'confirmada')
         ORDER BY fecha ASC, hora ASC
-        LIMIT 1
+        LIMIT 5
+        `,
+        [usuario.id]
+      );
+
+      const citaSeleccionada = citas[numeroCitaACancelar - 1];
+
+      if (!citaSeleccionada) {
+        return res.json({
+          reply: `No encontré una cita número ${numeroCitaACancelar}. Primero escribe: "quiero saber mis citas agendadas".`,
+          intent: "appointment_cancel"
+        });
+      }
+
+      await query(
+        `UPDATE citas SET estado = 'cancelada' WHERE id = ?`,
+        [citaSeleccionada.id]
+      );
+
+      return res.json({
+        reply:
+    `✅ Cancelé tu cita correctamente.
+
+    🚗 Vehículo: ${citaSeleccionada.vehiculo_texto}
+    🔧 Servicio: ${citaSeleccionada.motivo}
+    📅 Fecha: ${new Date(citaSeleccionada.fecha).toLocaleDateString('es-PE')}
+    ⏰ Hora: ${String(citaSeleccionada.hora).slice(0, 5)}`,
+        intent: "appointment_cancelled"
+      });
+    }
+
+    // ── 12. Consulta de cita ya existente ──
+    if (preguntaPorCitaExistente(userMsg)) {
+      const citas = await query(
+        `
+        SELECT id, fecha, hora, estado, motivo, cliente_nombre, cliente_telefono, vehiculo_texto
+        FROM citas
+        WHERE usuario_id = ?
+          AND estado IN ('pendiente', 'confirmada')
+        ORDER BY fecha ASC, hora ASC
+        LIMIT 5
         `,
         [usuario.id]
       );
@@ -570,22 +632,22 @@ Tu última consulta fue sobre:
       let respuestaIA;
 
       if (!citas.length) {
-        respuestaIA = 'No encontré citas pendientes o confirmadas a tu nombre. Si deseas, puedo ayudarte a agendar una nueva cita.';
+  respuestaIA = 'No encontré citas pendientes o confirmadas a tu nombre. Si deseas, puedo ayudarte a agendar una nueva cita.';
       } else {
-        const cita = citas[0];
+        respuestaIA = `Sí 😊 Tienes estas citas registradas:\n\n` +
+          citas.map((cita, index) => {
+            const fechaFormateada = new Date(cita.fecha).toLocaleDateString('es-PE');
 
-        const fechaFormateada = new Date(cita.fecha)
-          .toLocaleDateString('es-PE');
-
-        respuestaIA = `Sí 😊 Tienes una cita registrada:
-
-👤 Cliente: ${cita.cliente_nombre || usuario.nombre || 'No registrado'}
-📞 Teléfono: ${cita.cliente_telefono || 'No registrado'}
-🚗 Vehículo: ${cita.vehiculo_texto || 'No registrado'}
-🔧 Servicio: ${cita.motivo || 'No registrado'}
-📅 Fecha: ${fechaFormateada}
-⏰ Hora: ${String(cita.hora).slice(0, 5)}
-📌 Estado: ${cita.estado}`.trim();
+            return `${index + 1}. 
+      👤 Cliente: ${cita.cliente_nombre || usuario.nombre || 'No registrado'}
+      📞 Teléfono: ${cita.cliente_telefono || 'No registrado'}
+      🚗 Vehículo: ${cita.vehiculo_texto || 'No registrado'}
+      🔧 Servicio: ${cita.motivo || 'No registrado'}
+      📅 Fecha: ${fechaFormateada}
+      ⏰ Hora: ${String(cita.hora).slice(0, 5)}
+      📌 Estado: ${cita.estado}`;
+          }).join('\n\n') +
+          `\n\nSi deseas cancelar una, dime por ejemplo: "cancelar la cita 2".`;
       }
 
       await saveMessage(conversacion.id, "usuario", userMsg, "appointment_query", null);
