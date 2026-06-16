@@ -32,6 +32,10 @@ const PORT = process.env.PORT || 3000;
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 
+app.get('/', (req, res) => {
+  res.send('✅ Backend Taller Reyes Polo funcionando correctamente');
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Reyes Polo corriendo en el puerto ${PORT}`);
 });
