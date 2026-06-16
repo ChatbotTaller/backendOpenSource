@@ -46,11 +46,23 @@ function servicesAgent(message) {
     db.query(sql, params, (err, results) => {
       if (err) return reject(err);
 
-      resolve({
-        intent: "services",
-        keyword,
-        data: results
-      });
+    const serviciosFormateados = results.map(servicio => {
+      const precioNumero = Number(servicio.precio);
+
+      return {
+        ...servicio,
+        precio: Number.isFinite(precioNumero) ? precioNumero : null,
+        precio_texto: Number.isFinite(precioNumero)
+          ? `${precioNumero.toFixed(2)} soles`
+          : 'precio a consultar'
+      };
+    });
+
+    resolve({
+      intent: "services",
+      keyword,
+      data: serviciosFormateados
+    });
     });
   });
 }

@@ -7,6 +7,9 @@ const metricasRoutes = require('./routes/metricasRoutes');
 const authRoutes = require('./routes/authRoutes');
 const googleRoutes = require('./routes/googleRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
+const retellRoutes = require('./routes/retellRoutes');
+const livekitRoutes = require('./routes/livekitRoutes');
+const dniRoutes = require('./routes/dniRoutes');
 
 const app = express();
 
@@ -16,10 +19,18 @@ app.use('/', webhookRoutes);
 app.use('/', citasRoutes);
 app.use('/', metricasRoutes);
 app.use('/', authRoutes);
+app.use('/', dniRoutes);
 app.use('/', googleRoutes);
 app.use('/', whatsappRoutes);
+app.use('/', retellRoutes);
+app.use('/retell', retellRoutes);
+app.use('/livekit', livekitRoutes);
+
 
 const PORT = process.env.PORT || 3000;
+
+const swaggerUi = require('swagger-ui-express');
+const swaggerJsdoc = require('swagger-jsdoc');
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor Reyes Polo corriendo en el puerto ${PORT}`);
@@ -34,3 +45,24 @@ app.get('/politica-privacidad', (req, res) => {
     <p>Contacto: m4eg24@gmail.com</p>
   `);
 });
+
+const options = {
+  definition: {
+    openapi: '3.0.0',
+    info: {
+      title: 'API Taller Reyes Polo',
+      version: '1.0.0',
+      description: 'Documentación API del chatbot'
+    },
+    servers: [
+      {
+        url: 'http://localhost:3000'
+      }
+    ]
+  },
+  apis: ['./src/routes/*.js']
+};
+
+const swaggerSpec = swaggerJsdoc(options);
+
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

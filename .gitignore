@@ -3,6 +3,7 @@ node_modules/
 
 # Variables de entorno y contraseñas
 .env
+.env.railway
 
 # Archivos de registro de errores de npm
 npm-debug.log*
