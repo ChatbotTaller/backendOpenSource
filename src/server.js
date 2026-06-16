@@ -9,6 +9,7 @@ const googleRoutes = require('./routes/googleRoutes');
 const whatsappRoutes = require('./routes/whatsappRoutes');
 const retellRoutes = require('./routes/retellRoutes');
 const livekitRoutes = require('./routes/livekitRoutes');
+const dniRoutes = require('./routes/dniRoutes');
 
 const app = express();
 
@@ -18,11 +19,13 @@ app.use('/', webhookRoutes);
 app.use('/', citasRoutes);
 app.use('/', metricasRoutes);
 app.use('/', authRoutes);
+app.use('/', dniRoutes);
 app.use('/', googleRoutes);
 app.use('/', whatsappRoutes);
 app.use('/', retellRoutes);
 app.use('/retell', retellRoutes);
 app.use('/livekit', livekitRoutes);
+
 
 const PORT = process.env.PORT || 3000;
 
