@@ -13,41 +13,51 @@ async function verificarDni(req, res) {
   try {
     const dni = String(req.body.dni || '').trim();
 
-    if (!/^\d{8}$/.test(dni)) {
+    if (!/^\d{8}$/.test(dni) || dni === '00000000') {
       return res.status(400).json({
         success: false,
-        error: 'El DNI debe tener exactamente 8 dígitos.'
+        message: 'Ingrese un DNI válido.'
       });
     }
 
-    let nombreCompleto = null;
-
-    if (process.env.APIPERU_TOKEN) {
-      const response = await fetch(`https://apiperu.dev/api/dni/${dni}`, {
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${process.env.APIPERU_TOKEN}`,
-          Accept: 'application/json'
-        }
+    if (!process.env.APIPERU_TOKEN) {
+      return res.status(500).json({
+        success: false,
+        message: 'No se configuró el token de validación DNI.'
       });
+    }
 
-      const data = await response.json();
-
-      if (data?.success && data?.data) {
-        nombreCompleto = [
-          data.data.nombres,
-          data.data.apellido_paterno,
-          data.data.apellido_materno
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
+    const response = await fetch(`https://apiperu.dev/api/dni/${dni}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${process.env.APIPERU_TOKEN}`,
+        Accept: 'application/json'
       }
+    });
+
+    const data = await response.json();
+    console.log(JSON.stringify(data, null, 2));
+
+    if (
+      !data.success ||
+      !data.data ||
+      !data.data.nombres ||
+      !data.data.apellido_paterno
+    ) {
+      return res.status(404).json({
+        success: false,
+        message: 'El DNI no existe en RENIEC.'
+      });
     }
 
-    if (!nombreCompleto) {
-      nombreCompleto = `Cliente ${dni}`;
-    }
+    const nombreCompleto = [
+      data.data.nombres,
+      data.data.apellido_paterno,
+      data.data.apellido_materno
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
     const sessionId = `dni_${dni}`;
 
@@ -84,7 +94,7 @@ async function verificarDni(req, res) {
 
     return res.status(500).json({
       success: false,
-      error: 'No se pudo verificar el DNI.'
+      message: 'No se pudo verificar el DNI.'
     });
   }
 }
