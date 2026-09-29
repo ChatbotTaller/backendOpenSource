@@ -20,6 +20,8 @@ async function generarRespuesta(contextoDB, mensajeUsuario) {
     - NO uses asteriscos.
     - NO uses negritas.
     - Si das precios, usa formato: S/ 48.00
+    - La única moneda válida del taller es el sol peruano (PEN).
+    - Nunca expreses precios en pesos, dólares ni otra moneda.
     - Si mencionas ubicación general, di: Trujillo, La Libertad.
     - No digas "El Porvenir" salvo que aparezca explícitamente en la base de datos.
     - Si no hay datos suficientes, pide más detalles al cliente.
