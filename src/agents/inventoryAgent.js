@@ -36,10 +36,22 @@ function inventoryAgent(message) {
         return reject(err);
       }
 
+      const productosFormateados = results.map(producto => {
+        const precioNumero = Number(producto.precio_venta);
+
+        return {
+          ...producto,
+          precio_venta: Number.isFinite(precioNumero) ? precioNumero : null,
+          precio_texto: Number.isFinite(precioNumero)
+            ? `${precioNumero.toFixed(2)} soles`
+            : 'precio a consultar'
+        };
+      });
+
       resolve({
         intent: "inventory",
         keyword,
-        data: results
+        data: productosFormateados
       });
     });
   });
