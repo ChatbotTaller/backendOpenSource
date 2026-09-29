@@ -10,3 +10,14 @@ npm-debug.log*
 
 google-credentials.json
 google-token.json
+
+# Entornos y cache locales de Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Resultados locales de las pruebas de huella de carbono
+carbon-prueba/.venv/
+carbon-prueba/resultados/
+carbon-prueba/informes/

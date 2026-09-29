@@ -1,0 +1,5 @@
+# Medicion de energia y emisiones
+codecarbon==3.3.1
+
+# Generacion opcional del informe PDF
+reportlab==5.0.1
