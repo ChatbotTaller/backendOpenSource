@@ -6,7 +6,7 @@ function obtenerCitas(req, res) {
   const sql = `
     SELECT *
     FROM citas
-    ORDER BY fecha ASC, hora ASC
+    ORDER BY id DESC
   `;
 
   db.query(sql, (err, results) => {
