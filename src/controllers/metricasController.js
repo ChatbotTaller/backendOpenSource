@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { isPositiveInteger } = require('../utils/validators');
 
 function obtenerMetricas(req, res) {
   const sql = `
@@ -24,6 +25,22 @@ function evaluarMetrica(req, res) {
   const { id } = req.params;
   const { respuesta_correcta, intencion_correcta } = req.body;
 
+  if (!isPositiveInteger(id)) {
+    return res.status(400).json({ error: 'ID de métrica inválido' });
+  }
+
+  if (![true, false, 1, 0].includes(respuesta_correcta)) {
+    return res.status(400).json({ error: 'respuesta_correcta debe ser booleana' });
+  }
+
+  if (
+    intencion_correcta !== undefined &&
+    intencion_correcta !== null &&
+    (typeof intencion_correcta !== 'string' || intencion_correcta.length > 100)
+  ) {
+    return res.status(400).json({ error: 'intencion_correcta inválida' });
+  }
+
   const sql = `
     UPDATE metricas_chatbot
     SET respuesta_correcta = ?,
@@ -38,12 +55,16 @@ function evaluarMetrica(req, res) {
       intencion_correcta || null,
       id
     ],
-    (err) => {
+    (err, result) => {
       if (err) {
         console.error("Error evaluando métrica:", err);
         return res.status(500).json({
           error: "Error evaluando métrica"
         });
+      }
+
+      if (!result.affectedRows) {
+        return res.status(404).json({ error: 'Métrica no encontrada' });
       }
 
       res.json({
@@ -190,19 +211,21 @@ function obtenerMetricasPorIntent(req, res) {
 function obtenerMetricasVoz(req, res) {
   const sql = `
     SELECT
-      SUM(CASE WHEN canal = 'voz' THEN 1 ELSE 0 END) AS total_voz,
+      SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') THEN 1 ELSE 0 END) AS total_voz,
       SUM(CASE WHEN canal = 'texto' THEN 1 ELSE 0 END) AS total_texto,
       ROUND(
-        (SUM(CASE WHEN canal = 'voz' AND stt_exitoso = 1 THEN 1 ELSE 0 END) /
-        NULLIF(SUM(CASE WHEN canal = 'voz' THEN 1 ELSE 0 END), 0)) * 100,
+        (SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') AND stt_exitoso = 1 THEN 1 ELSE 0 END) /
+        NULLIF(SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') AND stt_exitoso IS NOT NULL THEN 1 ELSE 0 END), 0)) * 100,
         2
       ) AS stt_exito_porcentaje,
       ROUND(
-        (SUM(CASE WHEN canal = 'voz' AND tts_exitoso = 1 THEN 1 ELSE 0 END) /
-        NULLIF(SUM(CASE WHEN canal = 'voz' THEN 1 ELSE 0 END), 0)) * 100,
+        (SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') AND tts_exitoso = 1 THEN 1 ELSE 0 END) /
+        NULLIF(SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') AND tts_exitoso IS NOT NULL THEN 1 ELSE 0 END), 0)) * 100,
         2
       ) AS tts_exito_porcentaje,
-      ROUND(AVG(CASE WHEN canal = 'voz' THEN tiempo_respuesta_ms END), 2) AS tiempo_promedio_voz_ms
+      SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') AND stt_exitoso IS NOT NULL THEN 1 ELSE 0 END) AS stt_muestras,
+      SUM(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') AND tts_exitoso IS NOT NULL THEN 1 ELSE 0 END) AS tts_muestras,
+      ROUND(AVG(CASE WHEN canal IN ('voz', 'voz-simli', 'voz-retell') THEN tiempo_respuesta_ms END), 2) AS tiempo_promedio_voz_ms
     FROM metricas_chatbot
   `;
 
@@ -221,6 +244,8 @@ function obtenerMetricasVoz(req, res) {
       total_texto: Number(data.total_texto || 0),
       stt_exito_porcentaje: Number(data.stt_exito_porcentaje || 0),
       tts_exito_porcentaje: Number(data.tts_exito_porcentaje || 0),
+      stt_muestras: Number(data.stt_muestras || 0),
+      tts_muestras: Number(data.tts_muestras || 0),
       tiempo_promedio_voz_ms: Number(data.tiempo_promedio_voz_ms || 0)
     });
   });

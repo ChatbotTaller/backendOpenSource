@@ -2,19 +2,10 @@ const db = require('../config/database');
 
 function getOrCreateSession(sessionId) {
   return new Promise((resolve, reject) => {
-    const sqlUsuario = `
-      INSERT INTO usuarios (session_id, nombre, canal, ultima_interaccion)
-      VALUES (?, 'Visitante web', 'web', NOW())
-      ON DUPLICATE KEY UPDATE ultima_interaccion = NOW()
-    `;
-
-    db.query(sqlUsuario, [sessionId], (err) => {
-      if (err) return reject(err);
-
       db.query(
-        `SELECT id, nombre, email, telefono, preferencias, observaciones
+        `SELECT id, nombre, email, telefono, preferencias, observaciones, session_id
          FROM usuarios
-         WHERE session_id = ?
+         WHERE session_id = ? AND estado = 'activo'
          LIMIT 1`,
         [sessionId],
         (err, usuarios) => {
@@ -55,7 +46,6 @@ function getOrCreateSession(sessionId) {
           });
         }
       );
-    });
   });
 }
 

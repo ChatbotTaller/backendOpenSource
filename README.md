@@ -288,47 +288,28 @@ El backend se integra con diferentes servicios externos para ampliar las capacid
 |---|---|
 | OpenAI API | Generación de respuestas conversacionales mediante inteligencia artificial. |
 | Google Calendar API | Registro y sincronización de citas del taller. |
-| WhatsApp Cloud API | Recepción y envío de mensajes mediante WhatsApp. |
-| Retell AI | Integración con llamadas de voz. |
+| WhatsApp Cloud API | Integración legacy opcional; deshabilitada por defecto mediante `ENABLE_WHATSAPP=false`. |
+| Retell AI | Integración legacy opcional; deshabilitada por defecto mediante `ENABLE_RETELL=false`. |
 | LiveKit | Comunicación en tiempo real para módulos de voz. |
-| Simli | Pruebas de avatar conversacional. |
+| Simli | Avatar conversacional de Mara desplegado como servicio independiente. |
 | Railway | Despliegue del backend y base de datos cloud. |
 
 ---
 
 ## Variables de entorno
 
-El backend utiliza variables de entorno para proteger credenciales y configurar servicios externos. Estas variables no deben subirse públicamente al repositorio.
+El backend utiliza variables de entorno para proteger credenciales y configurar servicios externos. El archivo real `.env` está excluido de Git y nunca debe subirse al repositorio.
 
-Ejemplo de variables utilizadas:
+La lista actual, documentada y sin valores sensibles se encuentra en [`.env.example`](.env.example). Para desarrollo local, cópialo como `.env` y completa únicamente los valores necesarios. En Railway, configura las mismas variables desde la sección **Variables** de cada servicio.
 
-```env
-PORT=3000
+Puntos importantes:
 
-DB_HOST=your_database_host
-DB_USER=your_database_user
-DB_PASSWORD=your_database_password
-DB_NAME=your_database_name
-DB_PORT=3306
-
-JWT_SECRET=your_jwt_secret
-
-OPENAI_API_KEY=your_openai_api_key
-
-WHATSAPP_TOKEN=your_whatsapp_token
-WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_VERIFY_TOKEN=your_verify_token
-
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-GOOGLE_REDIRECT_URI=your_google_redirect_uri
-
-LIVEKIT_API_KEY=your_livekit_api_key
-LIVEKIT_API_SECRET=your_livekit_api_secret
-LIVEKIT_URL=your_livekit_url
-
-RETELL_API_KEY=your_retell_api_key
-```
+- `JWT_SECRET` firma las sesiones del sistema y debe ser largo, aleatorio y exclusivo del backend.
+- `VOICE_SERVICE_TOKEN` autentica la comunicación interna entre `simli-agent` y `backendOpenSource`; su valor debe coincidir en ambos servicios.
+- En local, `BACKEND_URL` del agente Simli debe ser `http://localhost:3000/webhook/voice`.
+- En Railway, `BACKEND_URL` del servicio `simli-agent` debe apuntar a la URL HTTPS pública del backend terminada en `/webhook/voice`.
+- `CORS_ORIGINS` debe contener solo los orígenes permitidos, separados por comas.
+- Las integraciones Retell y WhatsApp permanecen deshabilitadas por defecto mediante sus banderas `ENABLE_*`.
 
 ---
 
@@ -356,7 +337,7 @@ npm install
 
 ### 4. Configurar variables de entorno
 
-Crear un archivo `.env` en la raíz del proyecto y agregar las variables necesarias para base de datos, JWT, OpenAI, WhatsApp, Google Calendar, LiveKit y Retell.
+Copiar `.env.example` como `.env` y completar los secretos localmente. No subir `.env`, credenciales de Google ni tokens al repositorio.
 
 ### 5. Ejecutar el servidor
 

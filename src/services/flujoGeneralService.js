@@ -1,17 +1,18 @@
 const { classifyIntent } = require('../agents/classifierAgent');
 const { telefonoValido } = require('../utils/dataExtractor');
+const crypto = require('crypto');
 
 function validarDni(dni) {
   return /^\d{8}$/.test(String(dni || '').trim()) &&
     String(dni).trim() !== '00000000';
 }
 
-function generarSessionId(dni) {
-  return `dni_${String(dni || '').trim()}`;
+function generarSessionId() {
+  return `cs_${crypto.randomBytes(32).toString('base64url')}`;
 }
 
 function validarSessionId(sessionId) {
-  return /^dni_\d{8}$/.test(String(sessionId || '').trim());
+  return /^cs_[A-Za-z0-9_-]{40,}$/.test(String(sessionId || '').trim());
 }
 
 function validarDatosCita(cita = {}) {
@@ -51,7 +52,7 @@ function procesarFlujoGeneral({
     };
   }
 
-  const sessionId = generarSessionId(dni);
+  const sessionId = generarSessionId();
 
   if (!validarSessionId(sessionId)) {
     return {

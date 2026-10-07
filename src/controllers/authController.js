@@ -1,11 +1,19 @@
 const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getRequiredEnv } = require('../config/environment');
 
 function loginAdmin(req, res) {
   const { usuario, password } = req.body;
 
-  if (!usuario || !password) {
+  if (
+    typeof usuario !== 'string' ||
+    typeof password !== 'string' ||
+    !usuario.trim() ||
+    !password ||
+    usuario.length > 100 ||
+    password.length > 200
+  ) {
     return res.status(400).json({
       error: 'Usuario y contraseña son obligatorios'
     });
@@ -35,13 +43,21 @@ function loginAdmin(req, res) {
       return res.status(401).json({ error: 'Credenciales incorrectas' });
     }
 
+    let jwtSecret;
+    try {
+      jwtSecret = getRequiredEnv('JWT_SECRET');
+    } catch {
+      return res.status(500).json({ error: 'Autenticación administrativa no configurada' });
+    }
+
     const token = jwt.sign(
       {
         id: admin.id,
         usuario: admin.usuario,
-        nombre: admin.nombre
+        nombre: admin.nombre,
+        role: 'admin'
       },
-      process.env.JWT_SECRET || 'clave_temporal_desarrollo',
+      jwtSecret,
       { expiresIn: '2h' }
     );
 

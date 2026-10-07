@@ -1,4 +1,9 @@
 const autocannon = require('autocannon');
+const clientSession = process.env.LOAD_CLIENT_SESSION;
+
+if (!clientSession) {
+  throw new Error('Configura LOAD_CLIENT_SESSION antes de ejecutar esta prueba.');
+}
 
 const prueba = autocannon(
   {
@@ -9,13 +14,13 @@ const prueba = autocannon(
     duration: 10,
 
     headers: {
-      'content-type': 'application/json'
+      'content-type': 'application/json',
+      authorization: `Bearer ${clientSession}`
     },
 
     body: JSON.stringify({
       user_message: 'hola',
-      session_id: 'dni_19331864',
-      canal: 'web'
+      canal: 'texto'
     })
   },
   (error, resultado) => {
