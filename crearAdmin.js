@@ -2,9 +2,14 @@ const bcrypt = require('bcryptjs');
 const db = require('./src/config/database');
 
 async function crearAdmin() {
-  const usuario = 'admin';
-  const passwordPlano = '123456';
-  const nombre = 'Administrador';
+  const usuario = process.env.ADMIN_USER;
+  const passwordPlano = process.env.ADMIN_PASSWORD;
+  const nombre = process.env.ADMIN_NAME || 'Administrador';
+
+  if (!usuario || !passwordPlano || passwordPlano.length < 12) {
+    console.error('Configura ADMIN_USER y ADMIN_PASSWORD (mínimo 12 caracteres).');
+    process.exit(1);
+  }
 
   const passwordHash = await bcrypt.hash(passwordPlano, 10);
 

@@ -4,10 +4,14 @@ require('dotenv').config();
 const autocannon = require('autocannon');
 
 const BASE_URL = process.env.LOAD_BASE_URL || 'http://localhost:3000';
-const ADMIN_USER = process.env.LOAD_ADMIN_USER || 'admin';
-const ADMIN_PASSWORD = process.env.LOAD_ADMIN_PASSWORD || '123456';
-const DNI = process.env.LOAD_DNI || '19331864';
+const ADMIN_USER = process.env.LOAD_ADMIN_USER;
+const ADMIN_PASSWORD = process.env.LOAD_ADMIN_PASSWORD;
+const DNI = process.env.LOAD_DNI;
 const PROFILE = (process.env.LOAD_PROFILE || 'normal').toLowerCase();
+
+if (!ADMIN_USER || !ADMIN_PASSWORD || !DNI) {
+  throw new Error('Configura LOAD_ADMIN_USER, LOAD_ADMIN_PASSWORD y LOAD_DNI para ejecutar la carga.');
+}
 
 const STRESS = PROFILE === 'stress';
 const READ_C = STRESS ? 50 : 20;
@@ -156,6 +160,11 @@ async function main() {
     ...json
   };
 
+  const clientAuthJson = {
+    authorization: `Bearer ${data.sessionId}`,
+    ...json
+  };
+
   const sameMetricAnswer =
     data.metrica.respuesta_correcta == null
       ? 1
@@ -285,10 +294,9 @@ async function main() {
         method: 'POST',
         connections: LIGHT_C,
         duration: LIGHT_D,
-        headers: json,
+        headers: clientAuthJson,
         body: JSON.stringify({
           user_message: 'Que hora es',
-          session_id: data.sessionId,
           canal: 'web'
         })
       }
@@ -300,54 +308,22 @@ async function main() {
         method: 'POST',
         connections: STRESS ? 3 : 1,
         amount: STRESS ? 30 : 10,
-        headers: json,
+        headers: clientAuthJson,
         body: JSON.stringify({
           user_message: 'hola',
-          session_id: data.sessionId,
           canal: 'web'
         })
       }
     },
     {
-      name: 'PC-14 POST /retell/chat',
-      options: {
-        url: `${BASE_URL}/retell/chat`,
-        method: 'POST',
-        connections: 1,
-        amount: STRESS ? 10 : 5,
-        headers: json,
-        body: JSON.stringify({
-          message: 'hola',
-          session_id: data.sessionId
-        })
-      }
-    },
-    {
-      name: 'PC-15 POST /livekit/token',
+      name: 'PC-14 POST /livekit/token',
       options: {
         url: `${BASE_URL}/livekit/token`,
         method: 'POST',
         connections: LIGHT_C,
         duration: LIGHT_D,
-        headers: json,
-        body: JSON.stringify({
-          roomName: 'mara-room-load-test',
-          participantName: 'autocannon'
-        })
-      }
-    },
-    {
-      name: 'PC-16 POST /webhook-whatsapp (evento vacio)',
-      options: {
-        url: `${BASE_URL}/webhook-whatsapp`,
-        method: 'POST',
-        connections: LIGHT_C,
-        duration: LIGHT_D,
-        headers: json,
-        body: JSON.stringify({
-          object: 'whatsapp_business_account',
-          entry: []
-        })
+        headers: clientAuthJson,
+        body: '{}'
       }
     }
   ];
@@ -357,7 +333,7 @@ async function main() {
     await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
-  await run('PC-17 CARGA GENERAL MIXTA', {
+  await run('PC-15 CARGA GENERAL MIXTA', {
     url: BASE_URL,
     connections: STRESS ? 50 : 20,
     duration: STRESS ? 30 : 20,
@@ -372,21 +348,17 @@ async function main() {
       {
         method: 'POST',
         path: '/webhook',
-        headers: json,
+        headers: clientAuthJson,
         body: JSON.stringify({
           user_message: 'Que hora es',
-          session_id: data.sessionId,
           canal: 'web'
         })
       },
       {
         method: 'POST',
         path: '/livekit/token',
-        headers: json,
-        body: JSON.stringify({
-          roomName: 'mara-room-mixed-test',
-          participantName: 'autocannon-mixed'
-        })
+        headers: clientAuthJson,
+        body: '{}'
       }
     ]
   });
@@ -399,9 +371,8 @@ async function main() {
 
   console.log('\nRutas no saturadas deliberadamente:');
   console.log('- GET /auth/google/callback');
-  console.log('- POST /retell/create-web-call');
-  console.log('- POST /webhook-whatsapp con mensaje real');
-  console.log('Dependen de OAuth o servicios externos y deben probarse solo una vez.');
+  console.log('- Integraciones legacy Retell y WhatsApp (deshabilitadas por defecto)');
+  console.log('Las integraciones externas deben probarse de forma controlada, no con carga masiva.');
 }
 
 main().catch(error => {

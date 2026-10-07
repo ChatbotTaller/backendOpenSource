@@ -1,6 +1,7 @@
 const axios = require('axios');
 
 const { procesarMensaje } = require('./webhookController');
+const logger = require('../utils/logger');
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -17,7 +18,7 @@ function verifyWebhook(req, res) {
     token === VERIFY_TOKEN
   ) {
 
-    console.log('✅ Webhook verificado');
+    logger.info('whatsapp_webhook_verified');
 
     return res.status(200).send(challenge);
   }
@@ -43,10 +44,12 @@ async function receiveMessage(req, res) {
     const from = message.from;
     const text = message.text?.body;
 
-    console.log('Mensaje WhatsApp:', text);
+    logger.info('whatsapp_message_received', {
+      characters: String(text || '').length
+    });
 
     if (from === '16315551181') {
-    console.log('✅ Webhook de prueba recibido correctamente desde Meta');
+    logger.info('whatsapp_test_webhook_received');
     return res.sendStatus(200);
     }
 
@@ -72,7 +75,10 @@ async function receiveMessage(req, res) {
     return res.sendStatus(200);
 
   } catch (error) {
-    console.error('Error WhatsApp:', error.response?.data || error.message);
+    logger.error('whatsapp_receive_failed', {
+      status: error.response?.status,
+      code: error.code
+    });
 
     return res.sendStatus(200);
   }
@@ -98,7 +104,10 @@ async function enviarMensajeWhatsApp(to, message) {
       }
     );
   } catch (error) {
-    console.error('❌ Error enviando WhatsApp:', error.response?.data || error.message);
+    logger.error('whatsapp_send_failed', {
+      status: error.response?.status,
+      code: error.code
+    });
   }
 }
 

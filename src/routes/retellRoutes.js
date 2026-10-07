@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const { procesarMensaje } = require('../controllers/webhookController');
+const logger = require('../utils/logger');
 
 const callSessions = new Map();
 
@@ -32,7 +33,9 @@ function limpiarParaVoz(texto) {
 router.post('/retell/chat', async (req, res) => {
   try {
     const body = req.body || {};
-    console.log('📞 Retell llegó al backend:', body);
+    logger.info('retell_request_received', {
+      hasCallId: Boolean(body.call_id || body.call?.call_id || body.conversation_id)
+    });
 
     const userMessage =
       body.message ||
@@ -55,8 +58,9 @@ router.post('/retell/chat', async (req, res) => {
       (callId ? callSessions.get(callId) : null) ||
       'retell_demo';
 
-      console.log('🧠 SESSION USADA POR RETELL:', sessionId);
-      console.log('💬 MENSAJE RETELL:', userMessage);
+      logger.info('retell_message_received', {
+        characters: String(userMessage || '').length
+      });
 
     let respuestaBot = null;
 
@@ -118,7 +122,7 @@ router.post('/retell/create-web-call', async (req, res) => {
     console.timeEnd('CREATE_WEB_CALL');
 
     if (!response.ok) {
-      console.error('❌ Error Retell create-web-call:', data);
+      logger.warn('retell_create_call_failed', { status: response.status });
       return res.status(response.status).json(data);
     }
 

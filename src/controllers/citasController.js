@@ -1,10 +1,15 @@
 const db = require('../config/database');
 const { eliminarEventoCita } = require('../services/googleCalendarService');
+const {
+  isPositiveInteger,
+  normalizeAppointmentState
+} = require('../utils/validators');
 
 function obtenerCitas(req, res) {
 
   const sql = `
-    SELECT *
+    SELECT id, usuario_id, fecha, hora, estado, cliente_nombre,
+           cliente_telefono, vehiculo_texto, motivo, canal
     FROM citas
     ORDER BY id DESC
   `;
@@ -29,6 +34,15 @@ async function actualizarEstado(req, res) {
     try {
       const { id } = req.params;
       const { estado } = req.body;
+
+      if (!isPositiveInteger(id)) {
+        return res.status(400).json({ error: 'ID de cita inválido' });
+      }
+
+      const estadoValido = normalizeAppointmentState(estado);
+      if (!estadoValido) {
+        return res.status(400).json({ error: 'Estado de cita inválido' });
+      }
 
       const buscarSql = `
         SELECT google_event_id
@@ -59,7 +73,7 @@ async function actualizarEstado(req, res) {
           WHERE id = ?
         `;
 
-        db.query(updateSql, [estado, id], async (errUpdate) => {
+        db.query(updateSql, [estadoValido, Number(id)], async (errUpdate) => {
           if (errUpdate) {
             console.error(errUpdate);
             return res.status(500).json({
@@ -67,7 +81,7 @@ async function actualizarEstado(req, res) {
             });
           }
 
-          if (estado === 'cancelada' && googleEventId) {
+          if (estadoValido === 'cancelada' && googleEventId) {
             try {
               await eliminarEventoCita(googleEventId);
 

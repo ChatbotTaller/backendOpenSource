@@ -60,6 +60,17 @@ function telefonoValido(telefono) {
   return /^9\d{8}$/.test(String(telefono || ''));
 }
 
+function esDeclaracionVehiculo(texto) {
+  const msg = normalizar(texto);
+
+  return [
+    /\bmi vehiculo es\b/,
+    /\bmi carro es\b/,
+    /\bmi auto es\b/,
+    /\bpara que (?:lo )?sepas[,]? mi (?:vehiculo|carro|auto) es\b/
+  ].some(patron => patron.test(msg));
+}
+
 function extraerDni(texto) {
   const match = String(texto || '').match(/\b\d{8}\b/);
   return match ? match[0] : null;
@@ -105,6 +116,17 @@ function limpiarNombre(texto) {
   function extraerVehiculo(texto) {
     const msg = limpiarTexto(texto);
     const textoNormalizado = normalizar(msg);
+
+    const parecePreguntaDeMemoria =
+      textoNormalizado.includes('que vehiculo') ||
+      textoNormalizado.includes('que carro') ||
+      textoNormalizado.includes('cual es mi vehiculo') ||
+      textoNormalizado.includes('recuerdas mi vehiculo') ||
+      textoNormalizado.includes('sabes mi vehiculo');
+
+    if (parecePreguntaDeMemoria && !esDeclaracionVehiculo(texto)) {
+      return null;
+    }
 
     const palabrasServicio = [
       'revision', 'mantenimiento', 'suspension',
@@ -183,23 +205,55 @@ function extraerMotivo(texto) {
   const patrones = [
     /quiero\s+(.+)/i,
     /necesito\s+(.+)/i,
-    /problema con\s+(.+)/i,
-    /falla en\s+(.+)/i,
-    /servicio de\s+(.+)/i,
-    /cambio de\s+(.+)/i,
-    /reparar\s+(.+)/i,
-    /revisión de\s+(.+)/i,
-    /revision de\s+(.+)/i
+    /(problema con\s+.+)/i,
+    /(falla en\s+.+)/i,
+    /(servicio de\s+.+)/i,
+    /(cambio de\s+.+)/i,
+    /(reparar\s+.+)/i,
+    /(revisión de\s+.+)/i,
+    /(revision de\s+.+)/i
   ];
 
   for (const patron of patrones) {
     const match = msg.match(patron);
     if (match && match[1]) {
-      return limpiarMotivo(match[1]);
+      const motivo = limpiarMotivo(match[1]);
+      return esMotivoCitaValido(motivo) ? motivo : null;
     }
   }
 
-  return limpiarMotivo(msg);
+  const motivo = limpiarMotivo(msg);
+  return esMotivoCitaValido(motivo) ? motivo : null;
+}
+
+function esMotivoCitaValido(texto) {
+  const motivo = normalizar(texto)
+    .replace(/[¿?¡!.,]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (motivo.length < 3) return false;
+
+  const frasesDeControl = [
+    /^(?:agendar|reservar|programar|registrar|sacar|separar)(?:me)?\s+(?:una?\s+)?(?:cita|turno|reserva)$/,
+    /^(?:quiero|deseo|necesito)\s+(?:una?\s+)?(?:cita|turno|reserva)$/,
+    /^(?:cita|turno|reserva)$/
+  ];
+
+  if (frasesDeControl.some(patron => patron.test(motivo))) return false;
+
+  const esPreguntaSobreDatos =
+    /^(?:que|cual|como|sabes|recuerdas|dime)\b/.test(motivo) &&
+    /\b(?:problema|motivo|servicio|vehiculo|carro|datos?)\b/.test(motivo);
+
+  if (esPreguntaSobreDatos) return false;
+
+  const esFechaOTelefono =
+    /^9\d{8}$/.test(motivo) ||
+    /\b\d{4}-\d{2}-\d{2}\b/.test(motivo) ||
+    /\b(?:hoy|manana|lunes|martes|miercoles|jueves|viernes|sabado|domingo)\b/.test(motivo);
+
+  return !esFechaOTelefono;
 }
 
 function limpiarMotivo(texto) {
@@ -221,6 +275,8 @@ module.exports = {
   telefonoValido,
   extraerDni,
   extraerNombre,
+  esDeclaracionVehiculo,
   extraerVehiculo,
-  extraerMotivo
+  extraerMotivo,
+  esMotivoCitaValido
 };

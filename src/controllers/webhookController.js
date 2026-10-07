@@ -3,6 +3,10 @@
 // ─────────────────────────────────────────────
 
 const db = require('../config/database');
+const { validateChatMessage } = require('../utils/validators');
+const logger = require('../utils/logger');
+const { eliminarEventoCita } = require('../services/googleCalendarService');
+const { cancelarCitaPropiaPorId } = require('../services/citaOwnershipService');
 
 function query(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -37,8 +41,10 @@ const agentSkills = require('../agents/agentSkills');
 const {
   extraerNombre,
   extraerTelefono,
+  esDeclaracionVehiculo,
   extraerVehiculo,
-  extraerMotivo
+  extraerMotivo,
+  esMotivoCitaValido
 } = require('../utils/dataExtractor');
 
 const {
@@ -161,8 +167,12 @@ function preguntaPorDatosPersonales(mensaje) {
     msg.includes('mi telefono') ||
     msg.includes('mi celular') ||
     msg.includes('mi vehiculo') ||
+    msg.includes('cual es mi vehiculo') ||
     msg.includes('que vehiculo tengo') ||
-    msg.includes('sabes que vehiculo tengo')
+    msg.includes('que vehiculo te dije') ||
+    msg.includes('sabes que vehiculo tengo') ||
+    msg.includes('recuerdas que vehiculo') ||
+    msg.includes('te acuerdas que vehiculo')
   );
 }
 
@@ -194,6 +204,23 @@ function preguntaPorTelefono(message) {
     msg.includes('mi numero de celular') ||
     msg.includes('mi celular') ||
     msg.includes('que telefono tengo registrado')
+  );
+}
+
+function preguntaPorVehiculo(message) {
+  const msg = normalizarBase(message);
+
+  return (
+    msg.includes('cual es mi vehiculo') ||
+    msg.includes('que vehiculo tengo') ||
+    msg.includes('que vehiculo tengo registrado') ||
+    msg.includes('cual es mi carro') ||
+    msg.includes('que carro tengo') ||
+    msg.includes('que carro tengo registrado') ||
+    msg.includes('que vehiculo te dije') ||
+    msg.includes('sabes que vehiculo tengo') ||
+    msg.includes('recuerdas que vehiculo') ||
+    msg.includes('te acuerdas que vehiculo')
   );
 }
 
@@ -296,30 +323,37 @@ async function procesarMensaje(req, res) {
 
   try {
     // ── 1. Mensaje entrante y validación de sesión por DNI ──
-    const userMsg =
+    const incomingMessage =
       req.body.user_message ||
       req.body.message ||
       req.body.text ||
-      req.body.content ||
-      "Hola";
+      req.body.content;
 
-    const sessionId = req.body.session_id;
-
-    const canal = req.body.canal || 'texto';
-
-    const canalesCliente = ['texto', 'voz', 'voz-simli', 'voz-retell'];
-
-    if (canalesCliente.includes(canal)) {
-      if (!sessionId || !/^dni_\d{8}$/.test(sessionId)) {
-        return res.status(401).json({
-          reply: 'Primero debes identificarte con tu DNI para usar el chatbot.',
-          intent: 'auth_required'
-        });
-      }
+    const messageValidation = validateChatMessage(incomingMessage);
+    if (!messageValidation.valid) {
+      return res.status(400).json({
+        error: messageValidation.message,
+        intent: 'invalid_request'
+      });
     }
 
-    const sttExitoso = req.body.stt_exitoso ?? 1;
-    const ttsExitoso = req.body.tts_exitoso ?? 1;
+    const userMsg = messageValidation.value;
+    const sessionId = req.clientSessionId;
+
+    const requestedChannel = req.body.canal;
+    const canal = req.authType === 'voice-service'
+      ? 'voz-simli'
+      : (requestedChannel === 'voz' ? 'voz' : 'texto');
+
+    if (!sessionId || !req.cliente) {
+      return res.status(401).json({
+        reply: 'Primero debes identificarte para usar el chatbot.',
+        intent: 'auth_required'
+      });
+    }
+
+    const sttExitoso = canal === 'voz' || canal === 'voz-simli' ? 1 : null;
+    const ttsExitoso = null;
 
     // ── 2. Atajo: fecha y hora actual ──
     const textoFechaHora = normalizarBase(userMsg);
@@ -413,7 +447,79 @@ ${obtenerHoraPeru()}`,
       usuario.nombre = nombreDetectado;
     }
 
-    // ── 7. Preguntas sobre datos personales / nombre / teléfono guardados ──
+    // ── 7. Declaración explícita de vehículo ──
+    // Debe procesarse antes de las consultas de memoria. Frases como
+    // "mi vehículo es..." antes coincidían con "mi vehículo" y se
+    // interpretaban erróneamente como una solicitud para consultar datos.
+    const vehiculoDeclarado = esDeclaracionVehiculo(userMsg)
+      ? extraerVehiculo(userMsg)
+      : null;
+
+    if (vehiculoDeclarado) {
+      await guardarContextoUsuario(usuario.id, conversacion.id, {
+        nombre: usuario.nombre && usuario.nombre !== 'Visitante web'
+          ? usuario.nombre
+          : contextoPersistente?.nombre || null,
+        telefono: contextoPersistente?.telefono || usuario.telefono || null,
+        vehiculo: vehiculoDeclarado,
+        motivo: contextoPersistente?.motivo || null,
+        ultimo_intent: 'memory_update',
+        ultimo_tema: 'vehiculo'
+      });
+
+      const respuestaIA = `Perfecto, recordaré que tu vehículo es ${vehiculoDeclarado}.`;
+      const tiempoRespuesta = Date.now() - inicio;
+
+      await saveMessage(conversacion.id, 'usuario', userMsg, 'memory_update', null);
+      await saveMessage(conversacion.id, 'bot', respuestaIA, 'memory_update', tiempoRespuesta);
+      await guardarMetrica({
+        conversacion_id: conversacion.id,
+        pregunta: userMsg,
+        respuesta: respuestaIA,
+        intencion_detectada: 'memory_update',
+        tiempo_respuesta_ms: tiempoRespuesta,
+        canal,
+        stt_exitoso: sttExitoso,
+        tts_exitoso: ttsExitoso
+      });
+
+      return res.json({
+        reply: respuestaIA,
+        intent: 'memory_update',
+        response_time_ms: tiempoRespuesta
+      });
+    }
+
+    // ── 8. Consulta específica del vehículo guardado ──
+    if (preguntaPorVehiculo(userMsg)) {
+      const contextoActual = await obtenerContextoUsuario(usuario.id);
+      const vehiculo = contextoActual?.vehiculo || null;
+      const respuestaIA = vehiculo
+        ? `Sí 😊 Tu vehículo registrado es ${vehiculo}.`
+        : 'Aún no tengo un vehículo registrado. Puedes decirme: “mi vehículo es un Toyota Yaris”.';
+      const tiempoRespuesta = Date.now() - inicio;
+
+      await saveMessage(conversacion.id, 'usuario', userMsg, 'memory', null);
+      await saveMessage(conversacion.id, 'bot', respuestaIA, 'memory', tiempoRespuesta);
+      await guardarMetrica({
+        conversacion_id: conversacion.id,
+        pregunta: userMsg,
+        respuesta: respuestaIA,
+        intencion_detectada: 'memory',
+        tiempo_respuesta_ms: tiempoRespuesta,
+        canal,
+        stt_exitoso: sttExitoso,
+        tts_exitoso: ttsExitoso
+      });
+
+      return res.json({
+        reply: respuestaIA,
+        intent: 'memory',
+        response_time_ms: tiempoRespuesta
+      });
+    }
+
+    // ── 9. Preguntas sobre datos personales / nombre / teléfono guardados ──
     if (preguntaPorDatosPersonales(userMsg)) {
       const contextoActual = await obtenerContextoUsuario(usuario.id);
 
@@ -422,10 +528,10 @@ ${obtenerHoraPeru()}`,
         : contextoActual?.nombre || 'No registrado';
 
       const telefono = contextoActual?.telefono || usuario.telefono || 'No registrado';
-      // ⚠️ revisar: 'usuario.nombre_vehiculo' no parece existir en el esquema de 'usuarios'
-      // (el vehículo se guarda en citas.vehiculo_texto / clientes.vehiculo_modelo)
-      const vehiculo = contextoActual?.vehiculo || usuario.nombre_vehiculo || 'No registrado';
-      const motivo = contextoActual?.motivo || null;
+      const vehiculo = contextoActual?.vehiculo || 'No registrado';
+      const motivo = esMotivoCitaValido(contextoActual?.motivo)
+        ? contextoActual.motivo
+        : null;
 
       let respuestaIA = `Nombre: ${nombre}
 Teléfono: ${telefono}
@@ -502,7 +608,7 @@ ${motivo ? `Motivo reciente: ${motivo}` : ''}`.trim();
       });
     }
 
-    // ── 8. Saludo inicial con perfil de cliente ya existente ──
+    // ── 10. Saludo inicial con perfil de cliente ya existente ──
     const perfilCliente = await obtenerPerfilCliente(usuario.id);
 
     if (esSaludo(userMsg) && perfilCliente) {
@@ -540,7 +646,7 @@ Tu última consulta fue sobre:
       });
     }
 
-    // ── 9. Clasificación de intención + contexto reciente ──
+    // ── 11. Clasificación de intención + contexto reciente ──
     let intent = classifyIntent(userMsg);
     const lastContext = getLastContext(conversacion);
 
@@ -550,7 +656,7 @@ Tu última consulta fue sobre:
       .map(m => `${m.remitente}: ${m.mensaje}`)
       .join('\n');
 
-    // ── 10. Mensajes de cierre tras una cita ya completada ──
+    // ── 12. Mensajes de cierre tras una cita ya completada ──
     const mensajeCierre = ['ok', 'okay', 'okey', 'gracias', 'listo', 'ya', 'perfecto'];
 
     if (
@@ -577,7 +683,7 @@ Tu última consulta fue sobre:
     if (numeroCitaACancelar) {
       const citas = await query(
         `
-        SELECT id, fecha, hora, motivo, vehiculo_texto
+        SELECT id, fecha, hora, motivo, vehiculo_texto, google_event_id
         FROM citas
         WHERE usuario_id = ?
           AND estado IN ('pendiente', 'confirmada')
@@ -596,10 +702,33 @@ Tu última consulta fue sobre:
         });
       }
 
-      await query(
-        `UPDATE citas SET estado = 'cancelada' WHERE id = ?`,
-        [citaSeleccionada.id]
+      const cancelResult = await cancelarCitaPropiaPorId(
+        usuario.id,
+        citaSeleccionada.id
       );
+
+      if (cancelResult.status !== 'cancelled') {
+        return res.status(409).json({
+          reply: 'La cita ya no está disponible para cancelación.',
+          intent: 'appointment_cancel_conflict'
+        });
+      }
+
+      if (citaSeleccionada.google_event_id) {
+        try {
+          await eliminarEventoCita(citaSeleccionada.google_event_id);
+          await query(
+            'UPDATE citas SET google_event_id = NULL WHERE id = ? AND usuario_id = ?',
+            [citaSeleccionada.id, usuario.id]
+          );
+        } catch (error) {
+          logger.warn('calendar_cancel_sync_failed', {
+            code: error.code || error.name,
+            userId: usuario.id,
+            appointmentId: citaSeleccionada.id
+          });
+        }
+      }
 
       return res.json({
         reply:
@@ -920,9 +1049,12 @@ Luego con gusto respondo tu consulta adicional.`;
       esCancelacion ||
       pareceFechaHora;
 
+    const capturaMotivoDelFlujo = estadoCitaTemporal?.paso === 'motivo';
     const motivoSeguroFinal =
-      !noDebeGuardarComoMotivo
-        ? (motivoDetectado || (pareceMotivoServicio ? userMsg : null))
+      !noDebeGuardarComoMotivo &&
+      (capturaMotivoDelFlujo || pareceMotivoServicio) &&
+      esMotivoCitaValido(motivoDetectado)
+        ? motivoDetectado
         : null;
 
     const intentFinal = respuestaIA.includes('Tu cita fue registrada correctamente')
@@ -981,15 +1113,20 @@ Luego con gusto respondo tu consulta adicional.`;
       datos_json: nuevoContexto
     });
 
-    res.json({
+    const responseStatus = citaResult?.conflict ? 409 : 200;
+    res.status(responseStatus).json({
       reply: respuestaIA,
       intent: intentFinal,
       response_time_ms: tiempoRespuesta
     });
 
   } catch (error) {
-    console.error("❌ Error en webhookController:", error);
-    res.json({
+    logger.error('chat_processing_failed', {
+      code: error.code || error.name,
+      userId: req.cliente?.id,
+      channel: req.body?.canal
+    });
+    res.status(500).json({
       reply: "Lo siento, ocurrió un problema procesando tu consulta. Inténtalo nuevamente."
     });
   }

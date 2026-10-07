@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const logger = require('../utils/logger');
 
 async function guardarMetrica(data) {
 
@@ -28,13 +29,16 @@ async function guardarMetrica(data) {
         data.intencion_detectada,
         data.tiempo_respuesta_ms,
         data.canal || 'texto',
-        data.stt_exitoso ?? 1,
-        data.tts_exitoso ?? 1
+        data.stt_exitoso ?? null,
+        data.tts_exitoso ?? null
       ],
       (err, result) => {
 
         if (err) {
-          console.error("❌ Error guardando métrica:", err);
+          logger.error('metric_save_failed', {
+            code: err.code,
+            conversationId: data.conversacion_id
+          });
           return reject(err);
         }
 

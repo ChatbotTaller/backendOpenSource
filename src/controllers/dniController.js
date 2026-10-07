@@ -1,19 +1,99 @@
+const crypto = require('crypto');
 const db = require('../config/database');
+const logger = require('../utils/logger');
+const { isValidDni } = require('../utils/validators');
 
-function query(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.query(sql, params, (err, results) => {
-      if (err) return reject(err);
-      resolve(results);
-    });
-  });
+async function crearORecuperarUsuario(dni, nombre, sessionId) {
+  const connection = await db.promise().getConnection();
+  const lockName = `dni:${crypto
+    .createHash('sha256')
+    .update(dni)
+    .digest('hex')
+    .slice(0, 60)}`;
+  let lockAcquired = false;
+  let transactionStarted = false;
+
+  try {
+    const [lockRows] = await connection.query(
+      'SELECT GET_LOCK(?, 5) AS acquired',
+      [lockName]
+    );
+
+    lockAcquired = Number(lockRows[0]?.acquired) === 1;
+    if (!lockAcquired) {
+      const error = new Error('No se pudo bloquear la identidad del cliente');
+      error.code = 'DNI_LOCK_TIMEOUT';
+      throw error;
+    }
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [usuarios] = await connection.query(
+      `SELECT id
+       FROM usuarios
+       WHERE dni = ?
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [dni]
+    );
+
+    let usuarioId;
+
+    if (usuarios.length) {
+      usuarioId = usuarios[0].id;
+
+      // Invalida sesiones antiguas de filas duplicadas del mismo DNI.
+      // No borra ni fusiona datos históricos automáticamente.
+      await connection.query(
+        `UPDATE usuarios
+         SET session_id = NULL
+         WHERE dni = ? AND id <> ?`,
+        [dni, usuarioId]
+      );
+
+      await connection.query(
+        `UPDATE usuarios
+         SET nombre = ?, session_id = ?, canal = 'web', ultima_interaccion = NOW()
+         WHERE id = ?`,
+        [nombre, sessionId, usuarioId]
+      );
+    } else {
+      const [insertResult] = await connection.query(
+        `INSERT INTO usuarios (dni, nombre, session_id, canal, ultima_interaccion)
+         VALUES (?, ?, ?, 'web', NOW())`,
+        [dni, nombre, sessionId]
+      );
+      usuarioId = insertResult.insertId;
+    }
+
+    await connection.commit();
+    transactionStarted = false;
+
+    return { id: usuarioId, nombre };
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch {}
+    }
+    throw error;
+  } finally {
+    if (lockAcquired) {
+      try {
+        await connection.query('SELECT RELEASE_LOCK(?)', [lockName]);
+      } catch {}
+    }
+    connection.release();
+  }
 }
 
 async function verificarDni(req, res) {
   try {
     const dni = String(req.body.dni || '').trim();
 
-    if (!/^\d{8}$/.test(dni) || dni === '00000000') {
+    if (!isValidDni(dni)) {
       return res.status(400).json({
         success: false,
         message: 'Ingrese un DNI válido.'
@@ -36,7 +116,6 @@ async function verificarDni(req, res) {
     });
 
     const data = await response.json();
-    console.log(JSON.stringify(data, null, 2));
 
     if (
       !data.success ||
@@ -59,38 +138,24 @@ async function verificarDni(req, res) {
       .join(' ')
       .trim();
 
-    const sessionId = `dni_${dni}`;
+    const sessionId = `cs_${crypto.randomBytes(32).toString('base64url')}`;
 
-    await query(
-      `
-      INSERT INTO usuarios (dni, nombre, session_id, canal, ultima_interaccion)
-      VALUES (?, ?, ?, 'web', NOW())
-      ON DUPLICATE KEY UPDATE
-        nombre = VALUES(nombre),
-        session_id = VALUES(session_id),
-        ultima_interaccion = NOW()
-      `,
-      [dni, nombreCompleto, sessionId]
-    );
-
-    const usuarios = await query(
-      `
-      SELECT id, dni, nombre, telefono, session_id
-      FROM usuarios
-      WHERE dni = ?
-      LIMIT 1
-      `,
-      [dni]
+    const usuario = await crearORecuperarUsuario(
+      dni,
+      nombreCompleto,
+      sessionId
     );
 
     return res.json({
       success: true,
-      usuario: usuarios[0],
+      usuario,
       session_id: sessionId
     });
 
   } catch (error) {
-    console.error('Error verificando DNI:', error);
+    logger.error('dni_verification_failed', {
+      code: error.code || error.name
+    });
 
     return res.status(500).json({
       success: false,
@@ -99,4 +164,4 @@ async function verificarDni(req, res) {
   }
 }
 
-module.exports = { verificarDni };
+module.exports = { verificarDni, crearORecuperarUsuario };

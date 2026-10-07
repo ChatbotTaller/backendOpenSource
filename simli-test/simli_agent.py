@@ -10,7 +10,8 @@ from openai.types.beta.realtime.session import TurnDetection
 
 logging.basicConfig(level=logging.INFO)
 load_dotenv(override=True)
-BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:3000/webhook")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:3000/webhook/voice")
+VOICE_SERVICE_TOKEN = os.getenv("VOICE_SERVICE_TOKEN")
 
 
 def normalizar_moneda_para_voz(texto: str) -> str:
@@ -29,21 +30,24 @@ def normalizar_moneda_para_voz(texto: str) -> str:
     return re.sub(r"\bpesos?\b", "soles", respuesta, flags=re.IGNORECASE)
 
 @function_tool
-async def consultar_backend_taller(message: str, session_id: str) -> str:
-    
+async def consultar_backend_taller(message: str, usuario_id: int) -> str:
+    if not VOICE_SERVICE_TOKEN:
+        raise RuntimeError("VOICE_SERVICE_TOKEN no está configurado")
+
     logging.info(
-        f"ENVIANDO A BACKEND | session_id={session_id} | message={message}"
+        "Enviando transcripción al backend | usuario_id=%s | caracteres=%s",
+        usuario_id,
+        len(message),
     )
     
     async with aiohttp.ClientSession() as http:
         async with http.post(
             BACKEND_URL,
+            headers={"X-Voice-Service-Token": VOICE_SERVICE_TOKEN},
             json={
                 "user_message": message,
-                "session_id": session_id,
-                "canal": "voz-simli",
-                "stt_exitoso": 1,
-                "tts_exitoso": 1
+                "usuario_id": usuario_id,
+                "canal": "voz-simli"
             },
             timeout=20
         ) as resp:
@@ -76,11 +80,10 @@ async def entrypoint(ctx: JobContext):
 
     await simli_avatar.start(session, room=ctx.room)
 
-    room_payload = ctx.room.name.removeprefix("mara-room-")
-    session_id_real = room_payload.split("--", 1)[0]
+    room_payload = ctx.room.name.removeprefix("mara-user-")
+    usuario_id = int(room_payload.split("--", 1)[0])
 
-    logging.info(f"ROOM NAME LIVEKIT: {ctx.room.name}")
-    logging.info(f"SESSION ID REAL PARA BACKEND: {session_id_real}")
+    logging.info("Sala de voz iniciada | usuario_id=%s", usuario_id)
 
     await session.start(
         agent=Agent(
@@ -94,7 +97,7 @@ async def entrypoint(ctx: JobContext):
 
             Debes enviar exactamente:
             - message: el mensaje completo del usuario
-            - session_id: {session_id_real}
+            - usuario_id: {usuario_id}
 
             Luego responde exactamente con la respuesta devuelta por consultar_backend_taller.
 

@@ -1,12 +1,17 @@
 const db = require('../config/database');
-const { crearEventoCita } = require('../services/googleCalendarService');
+const {
+  crearEventoCita,
+  eliminarEventoCita
+} = require('../services/googleCalendarService');
+const { cancelarCitaPropiaPorDatos } = require('../services/citaOwnershipService');
 
 const {
   extraerTelefono,
   telefonoValido,
   extraerNombre,
   extraerVehiculo,
-  extraerMotivo
+  extraerMotivo,
+  esMotivoCitaValido
 } = require('../utils/dataExtractor');
 
 // ─────────────────────────────────────────────
@@ -218,6 +223,19 @@ function obtenerAhoraPeru() {
   return new Date(
     new Date().toLocaleString('en-US', { timeZone: 'America/Lima' })
   );
+}
+
+function fechaEjemploCita() {
+  const fecha = obtenerAhoraPeru();
+  fecha.setDate(fecha.getDate() + 1);
+  while (fecha.getDay() === 0) {
+    fecha.setDate(fecha.getDate() + 1);
+  }
+
+  const anio = fecha.getFullYear();
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  return `${anio}-${mes}-${dia} 09:00`;
 }
 
 function minutos(hora) {
@@ -544,7 +562,7 @@ function respuestaDatoEsperado(paso) {
     return 'Primero terminemos tu cita 😊\n\nAhora necesito el vehículo.\n\nEjemplo: Toyota Hilux, Nissan Frontier, Kia Sportage.';
   }
   if (paso === 'fecha') {
-    return 'Primero terminemos tu cita 😊\n\nAhora necesito la fecha y hora.\n\nEjemplo: 2026-05-20 09:00';
+    return `Primero terminemos tu cita 😊\n\nAhora necesito la fecha y hora.\n\nEjemplo: ${fechaEjemploCita()}`;
   }
   return 'Primero terminemos tu cita 😊';
 }
@@ -555,32 +573,89 @@ function respuestaDatoEsperado(paso) {
 // ─────────────────────────────────────────────
 
 async function registrarCitaEnDB({ usuarioId, fecha, hora, nombre, telefono, vehiculo, motivo }) {
-  const result = await query(
-    `INSERT INTO citas
-     (usuario_id, fecha, hora, estado, cliente_nombre, cliente_telefono, vehiculo_texto, motivo, canal)
-     VALUES (?, ?, ?, 'pendiente', ?, ?, ?, ?, 'web')`,
-    [usuarioId, fecha, hora, nombre, telefono, vehiculo, motivo]
-  );
+  const connection = await db.promise().getConnection();
+  const lockName = `citas:${fecha}`;
+  let lockAcquired = false;
+  let result;
 
-  await query(
-    `INSERT INTO clientes (nombre, telefono, vehiculo_modelo, ultima_consulta, fecha_registro)
-     VALUES (?, ?, ?, ?, NOW())
-     ON DUPLICATE KEY UPDATE
-       nombre = VALUES(nombre),
-       vehiculo_modelo = VALUES(vehiculo_modelo),
-       ultima_consulta = VALUES(ultima_consulta)`,
-    [nombre, telefono, vehiculo, motivo]
-  );
+  try {
+    const [lockRows] = await connection.query(
+      'SELECT GET_LOCK(?, 5) AS acquired',
+      [lockName]
+    );
 
-  await query(
-    `UPDATE usuarios SET nombre = ?, telefono = ? WHERE id = ?`,
-    [nombre, telefono, usuarioId]
-  );
+    lockAcquired = Number(lockRows[0]?.acquired) === 1;
+    if (!lockAcquired) {
+      const error = new Error('No se pudo bloquear la agenda');
+      error.code = 'APPOINTMENT_LOCK_TIMEOUT';
+      throw error;
+    }
 
-  await query(
-    `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
-    [usuarioId]
-  );
+    await connection.beginTransaction();
+
+    const [existingAppointments] = await connection.query(
+      `SELECT hora
+       FROM citas
+       WHERE fecha = ? AND estado != 'cancelada'
+       FOR UPDATE`,
+      [fecha]
+    );
+
+    const newStart = minutos(hora);
+    const newEnd = newStart + 120;
+    const conflict = existingAppointments.some(appointment => {
+      const existingStart = minutos(String(appointment.hora).slice(0, 5));
+      return newStart < existingStart + 120 && newEnd > existingStart;
+    });
+
+    if (conflict) {
+      const error = new Error('Horario no disponible');
+      error.code = 'APPOINTMENT_CONFLICT';
+      throw error;
+    }
+
+    const [insertResult] = await connection.query(
+      `INSERT INTO citas
+       (usuario_id, fecha, hora, estado, cliente_nombre, cliente_telefono, vehiculo_texto, motivo, canal)
+       VALUES (?, ?, ?, 'pendiente', ?, ?, ?, ?, 'web')`,
+      [usuarioId, fecha, hora, nombre, telefono, vehiculo, motivo]
+    );
+    result = insertResult;
+
+    await connection.query(
+      `INSERT INTO clientes (nombre, telefono, vehiculo_modelo, ultima_consulta, fecha_registro)
+       VALUES (?, ?, ?, ?, NOW())
+       ON DUPLICATE KEY UPDATE
+         nombre = VALUES(nombre),
+         vehiculo_modelo = VALUES(vehiculo_modelo),
+         ultima_consulta = VALUES(ultima_consulta)`,
+      [nombre, telefono, vehiculo, motivo]
+    );
+
+    await connection.query(
+      `UPDATE usuarios SET nombre = ?, telefono = ? WHERE id = ?`,
+      [nombre, telefono, usuarioId]
+    );
+
+    await connection.query(
+      `DELETE FROM estado_cita_temporal WHERE usuario_id = ?`,
+      [usuarioId]
+    );
+
+    await connection.commit();
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch {}
+    throw error;
+  } finally {
+    if (lockAcquired) {
+      try {
+        await connection.query('SELECT RELEASE_LOCK(?)', [lockName]);
+      } catch {}
+    }
+    connection.release();
+  }
 
   try {
     const eventoGoogle = await crearEventoCita({
@@ -603,6 +678,37 @@ async function registrarCitaEnDB({ usuarioId, fecha, hora, nombre, telefono, veh
   }
 
   return result;
+}
+
+async function registrarCitaConControl(data) {
+  if (
+    !data.nombre ||
+    !telefonoValido(data.telefono) ||
+    !data.vehiculo ||
+    !esMotivoCitaValido(data.motivo) ||
+    !data.fecha ||
+    !data.hora
+  ) {
+    return {
+      success: false,
+      invalid: true,
+      reply: 'No registraré la cita porque faltan datos válidos. Confirma el vehículo, el servicio o problema, la fecha y la hora.'
+    };
+  }
+
+  try {
+    await registrarCitaEnDB(data);
+    return null;
+  } catch (error) {
+    if (['APPOINTMENT_CONFLICT', 'APPOINTMENT_LOCK_TIMEOUT'].includes(error.code)) {
+      return {
+        success: false,
+        conflict: true,
+        reply: 'Ese horario acaba de ser ocupado por otra reserva. Elige otro horario disponible.'
+      };
+    }
+    throw error;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -691,20 +797,30 @@ Necesito estos datos:
 ⏰ Hora
 
 Ejemplo:
-Cancelar mi cita del 2026-06-15 a las 10:00 con teléfono 987654321`
+Cancelar mi cita del ${fechaEjemploCita()} con teléfono 987654321`
       };
     }
 
-    const result = await query(
-      `UPDATE citas
-       SET estado = 'cancelada'
-       WHERE fecha = ? AND hora = ? AND cliente_telefono = ? AND estado != 'cancelada'`,
-      [fecha, hora, telefono]
+    const result = await cancelarCitaPropiaPorDatos(
+      usuarioId,
+      fecha,
+      hora,
+      telefono
     );
 
     await query(`DELETE FROM estado_cita_temporal WHERE usuario_id = ?`, [usuarioId]);
 
-    if (result.affectedRows > 0) {
+    if (result.status === 'cancelled') {
+      if (result.appointment?.google_event_id) {
+        try {
+          await eliminarEventoCita(result.appointment.google_event_id);
+          await query(
+            'UPDATE citas SET google_event_id = NULL WHERE id = ? AND usuario_id = ?',
+            [result.appointment.id, usuarioId]
+          );
+        } catch {}
+      }
+
       return {
         success: true,
         reply:
@@ -753,7 +869,7 @@ Ejemplo:
         return { success: false, reply: disponibilidad.reply };
       }
 
-      await registrarCitaEnDB({
+      const registrationError = await registrarCitaConControl({
         usuarioId,
         fecha: datosBloque.fecha,
         hora: datosBloque.hora,
@@ -762,6 +878,8 @@ Ejemplo:
         vehiculo: datosBloque.vehiculo,
         motivo: datosBloque.motivo
       });
+
+      if (registrationError) return registrationError;
 
       return {
         success: true,
@@ -869,20 +987,18 @@ Ya tengo tus datos registrados.
 
     // 5c. Usuario nuevo: pedir nombre desde cero
     const vehiculoContexto = lastContext?.vehiculo || null;
-    const motivoContexto   = lastContext?.motivo   || null;
     const { fecha: fechaCtx, hora: horaCtx } = extraerFechaHoraNatural(message);
 
     await query(
       `INSERT INTO estado_cita_temporal (usuario_id, paso, vehiculo, motivo, fecha, hora)
        VALUES (?, 'nombre', ?, ?, ?, ?)`,
-      [usuarioId, vehiculoContexto, motivoContexto, fechaCtx, horaCtx]
+      [usuarioId, vehiculoContexto, null, fechaCtx, horaCtx]
     );
 
     let mensajeExtra = '';
-    if (vehiculoContexto || motivoContexto) {
+    if (vehiculoContexto) {
       mensajeExtra = `\n\nYa tengo estos datos de tu consulta anterior:
-${vehiculoContexto ? `🚗 Vehículo: ${vehiculoContexto}` : ''}
-${motivoContexto   ? `🛠️ Servicio/problema: ${motivoContexto}` : ''}`;
+${vehiculoContexto ? `🚗 Vehículo: ${vehiculoContexto}` : ''}`;
     }
 
     return {
@@ -952,17 +1068,18 @@ Ejemplo:
     const citasExistentes = await query(
       `SELECT cliente_nombre, vehiculo_texto
        FROM citas
-       WHERE cliente_telefono = ?
+       WHERE usuario_id = ?
+         AND cliente_telefono = ?
        ORDER BY id DESC
        LIMIT 1`,
-      [telefonoLimpio]
+      [usuarioId, telefonoLimpio]
     );
 
     if (citasExistentes.length > 0) {
       const cliente = citasExistentes[0];
       await query(
         `UPDATE estado_cita_temporal
-         SET telefono = ?, nombre = ?, vehiculo = ?, paso = 'confirmar_vehiculo'
+         SET telefono = ?, nombre = ?, vehiculo = ?, motivo = NULL, paso = 'confirmar_vehiculo'
          WHERE usuario_id = ?`,
         [telefonoLimpio, cliente.cliente_nombre, cliente.vehiculo_texto, usuarioId]
       );
@@ -984,20 +1101,19 @@ Encontré tu información registrada.
     }
 
     const vehiculoGuardado = estado.vehiculo || lastContext?.vehiculo || null;
-    const motivoGuardado   = estado.motivo   || lastContext?.motivo   || null;
-    const siguientePaso    = (vehiculoGuardado && motivoGuardado) ? 'fecha' : 'vehiculo';
+    const siguientePaso = vehiculoGuardado ? 'confirmar_vehiculo' : 'vehiculo';
 
     await query(
       `UPDATE estado_cita_temporal
-       SET telefono = ?, vehiculo = ?, motivo = ?, paso = ?
+       SET telefono = ?, vehiculo = ?, motivo = NULL, paso = ?
        WHERE usuario_id = ?`,
-      [telefonoLimpio, vehiculoGuardado, motivoGuardado, siguientePaso, usuarioId]
+      [telefonoLimpio, vehiculoGuardado, siguientePaso, usuarioId]
     );
 
     return {
       success: true,
-      reply: siguientePaso === 'fecha'
-        ? `Perfecto 😊\n\nYa tengo tu vehículo y el problema registrado.\n\nAhora envíame la fecha y hora de la cita.\n\nEjemplo:\n2026-05-20 09:00`
+      reply: vehiculoGuardado
+        ? `Perfecto 😊\n\nTengo este vehículo registrado:\n🚗 ${vehiculoGuardado}\n\n¿Deseas usarlo para esta cita?\n\n1. Sí, usar este vehículo\n2. No, registrar otro vehículo`
         : 'Excelente 🚘\n¿Qué vehículo tienes? (marca/modelo)'
     };
   }
@@ -1114,7 +1230,7 @@ Ahora continuemos con tu cita:
     }
 
     const motivoFinal = esRespuestaDeContexto(message)
-      ? (lastContext?.motivo || estado.motivo || null)
+      ? (esMotivoCitaValido(estado.motivo) ? estado.motivo : null)
       : extraerMotivo(message);
 
     if (!motivoFinal) {
@@ -1142,12 +1258,24 @@ Cambio de aceite`
 Ahora envíame la fecha y hora.
 
 Ejemplo:
-2026-05-20 09:00`
+${fechaEjemploCita()}`
     };
   }
 
   // ── PASO: fecha ───────────────────────────────────────────────────────────
   if (estado.paso === 'fecha') {
+    if (!estado.vehiculo || !esMotivoCitaValido(estado.motivo)) {
+      await query(
+        `UPDATE estado_cita_temporal SET motivo = NULL, paso = 'motivo' WHERE usuario_id = ?`,
+        [usuarioId]
+      );
+
+      return {
+        success: false,
+        reply: 'Antes de elegir la fecha necesito que me indiques el servicio o problema real del vehículo.\n\nEjemplo: cambio de aceite, revisión de frenos o falla de suspensión.'
+      };
+    }
+
     if (esPreguntaGeneral(message)) {
       return { success: false, reply: respuestaDatoEsperado('fecha') };
     }
@@ -1194,7 +1322,7 @@ Ejemplo:
       };
     }
 
-    await registrarCitaEnDB({
+    const registrationError = await registrarCitaConControl({
       usuarioId,
       fecha,
       hora,
@@ -1203,6 +1331,8 @@ Ejemplo:
       vehiculo: estado.vehiculo,
       motivo:   estado.motivo
     });
+
+    if (registrationError) return registrationError;
 
     return {
       success: true,
@@ -1226,3 +1356,8 @@ Ejemplo:
 }
 
 module.exports = appointmentAgent;
+module.exports.__test = {
+  validarDisponibilidad,
+  registrarCitaEnDB,
+  registrarCitaConControl
+};

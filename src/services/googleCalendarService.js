@@ -27,13 +27,14 @@ if (credentials) {
   console.log('Google Calendar no configurado.');
 }
 
-function getAuthUrl() {
+function getAuthUrl(state) {
   if (!oauth2Client) {
     throw new Error('Google Calendar no configurado.');
   }
 
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
+    state,
     scope: ['https://www.googleapis.com/auth/calendar.events']
   });
 }

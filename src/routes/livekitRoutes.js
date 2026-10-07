@@ -1,16 +1,36 @@
 const express = require('express');
+const crypto = require('crypto');
 const { AccessToken, RoomConfiguration, RoomAgentDispatch } = require('livekit-server-sdk');
+const { verificarSesionCliente } = require('../middlewares/clientAuthMiddleware');
+const { getRequiredEnv } = require('../config/environment');
 
 const router = express.Router();
 
-router.post('/token', async (req, res) => {
+/**
+ * @swagger
+ * /livekit/token:
+ *   post:
+ *     summary: Crear credenciales temporales para una llamada de voz
+ *     tags: [Voz]
+ *     security:
+ *       - ClientBearer: []
+ *     responses:
+ *       200:
+ *         description: Token y sala generados por el servidor
+ *       401:
+ *         description: Sesión de cliente ausente o inválida
+ *       500:
+ *         description: Integración de voz no configurada
+ */
+router.post('/token', verificarSesionCliente, async (req, res) => {
   try {
-    const roomName = req.body.roomName || `mara-room-${Date.now()}`;
-    const participantName = req.body.participantName || `cliente-${Date.now()}`;
+    const callId = crypto.randomUUID();
+    const roomName = `mara-user-${req.cliente.id}--${callId}`;
+    const participantName = `cliente-${crypto.randomUUID()}`;
 
     const at = new AccessToken(
-      process.env.LIVEKIT_API_KEY,
-      process.env.LIVEKIT_API_SECRET,
+      getRequiredEnv('LIVEKIT_API_KEY'),
+      getRequiredEnv('LIVEKIT_API_SECRET'),
       {
         identity: participantName,
         name: participantName
@@ -35,7 +55,7 @@ router.post('/token', async (req, res) => {
 
     return res.json({
       token: await at.toJwt(),
-      url: process.env.LIVEKIT_URL,
+      url: getRequiredEnv('LIVEKIT_URL'),
       roomName,
       participantName
     });
