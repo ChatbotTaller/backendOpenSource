@@ -39,7 +39,6 @@ const appointmentAgent = require('../agents/appointmentAgent');
 const agentSkills = require('../agents/agentSkills');
 
 const {
-  extraerNombre,
   extraerTelefono,
   esDeclaracionVehiculo,
   extraerVehiculo,
@@ -102,21 +101,6 @@ function esSaludoConversacional(message) {
 // USUARIO Y CLIENTE EN BASE DE DATOS
 // ─────────────────────────────────────────────
 
-function guardarNombreUsuario(usuarioId, nombre) {
-  return new Promise((resolve, reject) => {
-    const sql = `
-      UPDATE usuarios
-      SET nombre = ?
-      WHERE id = ?
-    `;
-
-    db.query(sql, [nombre, usuarioId], (err, result) => {
-      if (err) return reject(err);
-      resolve(result);
-    });
-  });
-}
-
 // (Disponible pero actualmente no se usa en procesarMensaje)
 function obtenerNombreUsuario(usuarioId) {
   return new Promise((resolve, reject) => {
@@ -133,22 +117,6 @@ function obtenerNombreUsuario(usuarioId) {
         resolve(results[0]?.nombre || null);
       }
     );
-  });
-}
-
-function obtenerClientePorTelefono(telefono) {
-  return new Promise((resolve, reject) => {
-    const sql = `
-      SELECT *
-      FROM clientes
-      WHERE telefono = ?
-      LIMIT 1
-    `;
-
-    db.query(sql, [telefono], (err, results) => {
-      if (err) return reject(err);
-      resolve(results[0] || null);
-    });
   });
 }
 
@@ -406,18 +374,10 @@ ${obtenerHoraPeru()}`,
     }
 
     // ── 5. Detección de teléfono en el mensaje ──
+    // Un dato declarado en el chat no acredita la identidad del cliente.
+    // El nombre de usuarios procede de la verificación por DNI y no debe
+    // sustituirse por el nombre de otro registro encontrado por teléfono.
     const telefonoDetectado = extraerTelefono(userMsg);
-
-    if (telefonoDetectado) {
-      const clienteGuardado = await obtenerClientePorTelefono(telefonoDetectado);
-
-      if (clienteGuardado) {
-        usuario.nombre = clienteGuardado.nombre;
-        usuario.telefono = clienteGuardado.telefono;
-
-        await guardarNombreUsuario(usuario.id, clienteGuardado.nombre);
-      }
-    }
 
     if (telefonoDetectado) {
       await guardarContextoUsuario(usuario.id, conversacion.id, {
@@ -426,28 +386,9 @@ ${obtenerHoraPeru()}`,
       });
     }
 
-    // ── 6. Detección de nombre declarado por el usuario ──
-    const textoNormalizado = normalizarBase(userMsg);
-
-    const mensajeDeclaraNombre =
-      textoNormalizado.includes('mi nombre es') ||
-      textoNormalizado.includes('me llamo') ||
-      textoNormalizado.startsWith('soy ');
-
-    const nombreDetectado = mensajeDeclaraNombre
-      ? extraerNombre(userMsg)
-      : null;
-
-    if (
-      nombreDetectado &&
-      !esSaludo(userMsg) &&
-      nombreDetectado.toLowerCase() !== 'hola'
-    ) {
-      await guardarNombreUsuario(usuario.id, nombreDetectado);
-      usuario.nombre = nombreDetectado;
-    }
-
-    // ── 7. Declaración explícita de vehículo ──
+    // ── 6. Declaración explícita de vehículo ──
+    // La identidad verificada tampoco se reemplaza por frases como
+    // "me llamo" dentro de una pregunta o una declaración no verificada.
     // Debe procesarse antes de las consultas de memoria. Frases como
     // "mi vehículo es..." antes coincidían con "mi vehículo" y se
     // interpretaban erróneamente como una solicitud para consultar datos.

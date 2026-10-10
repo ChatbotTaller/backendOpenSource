@@ -632,9 +632,11 @@ async function registrarCitaEnDB({ usuarioId, fecha, hora, nombre, telefono, veh
       [nombre, telefono, vehiculo, motivo]
     );
 
+    // El nombre de la cita puede ser un contacto distinto; no reemplaza
+    // el nombre verificado por DNI del titular de la sesión.
     await connection.query(
-      `UPDATE usuarios SET nombre = ?, telefono = ? WHERE id = ?`,
-      [nombre, telefono, usuarioId]
+      `UPDATE usuarios SET telefono = ? WHERE id = ?`,
+      [telefono, usuarioId]
     );
 
     await connection.query(
