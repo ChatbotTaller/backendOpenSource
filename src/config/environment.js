@@ -1,7 +1,8 @@
 const DEFAULT_CORS_ORIGINS = [
   'http://localhost:4200',
   'http://127.0.0.1:4200',
-  'https://front-open-source.vercel.app'
+  'https://front-open-source.vercel.app',
+  'https://multichat-reyespolo.vercel.app'
 ];
 
 function getRequiredEnv(name) {
