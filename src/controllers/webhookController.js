@@ -7,6 +7,13 @@ const { validateChatMessage } = require('../utils/validators');
 const logger = require('../utils/logger');
 const { eliminarEventoCita } = require('../services/googleCalendarService');
 const { cancelarCitaPropiaPorId } = require('../services/citaOwnershipService');
+const {
+  wantsToCancelExistingAppointment,
+  appointmentNumberToCancel,
+  wantsToCancelBookingFlow,
+  wantsToListAppointments,
+  wantsToCreateAppointment
+} = require('../utils/appointmentCancellationIntent');
 
 function query(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -192,42 +199,7 @@ function preguntaPorVehiculo(message) {
 }
 
 function preguntaPorCitaExistente(mensaje) {
-  const msg = normalizarBase(mensaje);
-
-  return (
-    msg.includes('tengo una cita') ||
-    msg.includes('tengo cita') ||
-    msg.includes('tengo alguna cita') ||
-    msg.includes('tengo algun agendamiento') ||
-    msg.includes('tengo algún agendamiento') ||
-
-    msg.includes('cuando es mi cita') ||
-    msg.includes('cuando tengo cita') ||
-    msg.includes('cuando tengo mi cita') ||
-
-    msg.includes('mi cita') ||
-    msg.includes('mis citas') ||
-    msg.includes('mis citas agendadas') ||
-    msg.includes('citas agendadas') ||
-    msg.includes('citas pendientes') ||
-
-    msg.includes('que citas tengo') ||
-    msg.includes('qué citas tengo') ||
-    msg.includes('quiero saber mis citas') ||
-    msg.includes('quiero ver mis citas') ||
-    msg.includes('ver mi cita') ||
-    msg.includes('ver mis citas') ||
-    msg.includes('consultar mi cita') ||
-    msg.includes('consultar mis citas')
-  );
-}
-
-function quiereCancelarCitaPorNumero(mensaje) {
-  const msg = normalizarBase(mensaje);
-
-  const match = msg.match(/cancelar\s+(?:la\s+)?cita\s+(\d+)/);
-
-  return match ? Number(match[1]) : null;
+  return wantsToListAppointments(mensaje) && !wantsToCreateAppointment(mensaje) && !wantsToCancelBookingFlow(mensaje);
 }
 
 // ─────────────────────────────────────────────
@@ -272,13 +244,34 @@ function contieneFechaHora(message) {
   return /\d{4}-\d{2}-\d{2}/.test(message) && /\d{2}:\d{2}/.test(message);
 }
 
-function pareceConsultaExterna(intent) {
-  return (
-    intent === 'services' ||
-    intent === 'inventory' ||
-    intent === 'schedule' ||
-    intent === 'info'
-  );
+function recordatorioAgendamiento(paso) {
+  const datoPendiente = {
+    nombre: 'tu nombre',
+    telefono: 'tu número de teléfono',
+    confirmar_vehiculo: 'que confirmes si usarás el vehículo registrado',
+    vehiculo: 'la marca y el modelo de tu vehículo',
+    motivo: 'el trabajo o problema concreto de tu vehículo',
+    fecha: 'la fecha y hora que prefieres'
+  }[paso] || 'el siguiente dato de tu cita';
+
+  return `Tu agendamiento sigue pendiente: necesito ${datoPendiente}. Puedes responderme para continuarlo o escribir "cancelar agendamiento" para detener el proceso.`;
+}
+
+function consultaDuranteAgendamiento(message, intent) {
+  const text = normalizarBase(message).trim();
+  if (/^(?:hola|buenas|buenos dias|buenas tardes|buenas noches)\b/.test(text) || esSaludoConversacional(message)) {
+    return { intent: 'info', saludo: true };
+  }
+
+  const pregunta = /[¿?]/.test(message) ||
+    /^(?:que|cual|cuales|como|donde|cuando|cuanto|cuanta|cuantos|tienen|ofrecen|atienden|venden|puedes decirme|me puedes decir|quisiera saber|quiero saber|necesito saber|quiero consultar|tengo una duda|una consulta|me gustaria saber)\b/.test(text);
+  if (!pregunta) return null;
+
+  if (/\b(?:horario|abren|cierran|atienden|dias de atencion)\b/.test(text)) return { intent: 'schedule' };
+  if (/\b(?:servicio|reparacion|revision|mantenimiento|cambio de aceite)\b/.test(text)) return { intent: 'services' };
+  if (/\b(?:repuesto|producto|stock|filtro|aceite|bateria|llanta)\b/.test(text)) return { intent: 'inventory' };
+  if (/\b(?:servicio|reparacion|mantenimiento|motor|freno|suspension|precio|cuesta|garantia)\b/.test(text)) return { intent: 'services' };
+  return { intent: intent === 'appointment' || intent === 'follow_up' ? 'info' : intent };
 }
 
 // ─────────────────────────────────────────────
@@ -357,8 +350,9 @@ ${obtenerHoraPeru()}`,
 
     // ── 4. Saludo conversacional ("¿cómo estás?") ──
     if (esSaludoConversacional(userMsg)) {
-      const respuestaIA =
-        `Muy bien, gracias por preguntar 😊 ¿En qué puedo ayudarte hoy?`;
+      const estadoSaludo = await obtenerEstadoCitaTemporal(usuario.id);
+      const respuestaIA = `Muy bien, gracias por preguntar 😊 ¿En qué puedo ayudarte hoy?` +
+        (estadoSaludo ? `\n\n${recordatorioAgendamiento(estadoSaludo.paso)}` : '');
 
       const tiempoRespuesta = Date.now() - inicio;
 
@@ -431,6 +425,30 @@ ${obtenerHoraPeru()}`,
     }
 
     // ── 8. Consulta específica del vehículo guardado ──
+    const consultaVehiculos = /\b(?:cuantos|cuales|que|mis)\s+(?:son\s+)?(?:mis\s+)?(?:vehiculos|carros|autos)\b/.test(normalizarBase(userMsg));
+    if (consultaVehiculos) {
+      const filas = await query(
+        `SELECT DISTINCT TRIM(vehiculo_texto) AS vehiculo FROM citas
+         WHERE usuario_id = ? AND vehiculo_texto IS NOT NULL AND TRIM(vehiculo_texto) <> ''`,
+        [usuario.id]
+      );
+      const vehiculos = [...new Map(
+        [...filas.map(fila => fila.vehiculo), contextoPersistente?.vehiculo]
+          .filter(Boolean)
+          .map(vehiculo => [normalizarBase(vehiculo).replace(/\s+/g, ' ').trim(), String(vehiculo).trim()])
+      ).values()];
+      const estado = await obtenerEstadoCitaTemporal(usuario.id);
+      const respuestaIA = (vehiculos.length
+        ? `Encontré ${vehiculos.length} ${vehiculos.length === 1 ? 'descripción de vehículo asociada' : 'descripciones de vehículos asociadas'} a tu historial:\n\n${vehiculos.map((v, i) => `${i + 1}. ${v}`).join('\n')}\n\nEl conteo se basa en los nombres de los vehículos guardados; no distingue dos vehículos del mismo modelo.`
+        : 'Aún no encuentro vehículos asociados a tu historial.') + (estado ? `\n\n${recordatorioAgendamiento(estado.paso)}` : '');
+      const tiempoRespuesta = Date.now() - inicio;
+      await saveMessage(conversacion.id, 'usuario', userMsg, 'vehicle_query', null);
+      await saveMessage(conversacion.id, 'bot', respuestaIA, 'vehicle_query', tiempoRespuesta);
+      await guardarMetrica({ conversacion_id: conversacion.id, pregunta: userMsg, respuesta: respuestaIA,
+        intencion_detectada: 'vehicle_query', tiempo_respuesta_ms: tiempoRespuesta, canal,
+        stt_exitoso: sttExitoso, tts_exitoso: ttsExitoso });
+      return res.json({ reply: respuestaIA, intent: 'vehicle_query', appointment_in_progress: Boolean(estado), response_time_ms: tiempoRespuesta });
+    }
     if (preguntaPorVehiculo(userMsg)) {
       const contextoActual = await obtenerContextoUsuario(usuario.id);
       const vehiculo = contextoActual?.vehiculo || null;
@@ -552,16 +570,19 @@ ${motivo ? `Motivo reciente: ${motivo}` : ''}`.trim();
     const perfilCliente = await obtenerPerfilCliente(usuario.id);
 
     if (esSaludo(userMsg) && perfilCliente) {
+      const estadoSaludo = await obtenerEstadoCitaTemporal(usuario.id);
+      const motivoAnterior = esMotivoCitaValido(perfilCliente.motivo)
+        ? `\n\nTu última consulta fue sobre:\n🛠️ ${perfilCliente.motivo}`
+        : '';
       const respuestaIA = `Hola ${perfilCliente.cliente_nombre} 👋
 Bienvenido nuevamente a Taller Reyes Polo.
 
 Veo que anteriormente registraste este vehículo:
-🚗 ${perfilCliente.vehiculo_texto}
+🚗 ${perfilCliente.vehiculo_texto}${motivoAnterior}
 
-Tu última consulta fue sobre:
-🛠️ ${perfilCliente.motivo}
-
-¿Deseas agendar otra cita o consultar algún servicio/repuesto?`;
+${estadoSaludo
+    ? recordatorioAgendamiento(estadoSaludo.paso)
+    : '¿Deseas agendar otra cita o consultar algún servicio/repuesto?'}`;
 
       const tiempoRespuesta = Date.now() - inicio;
 
@@ -612,9 +633,10 @@ Tu última consulta fue sobre:
     }
 
     // ── 11.5 Cancelar cita por número ──
-    const numeroCitaACancelar = quiereCancelarCitaPorNumero(userMsg);
+    const numeroCitaACancelar = appointmentNumberToCancel(userMsg);
 
     if (numeroCitaACancelar) {
+      await query('DELETE FROM estado_cita_temporal WHERE usuario_id = ?', [usuario.id]);
       const citas = await query(
         `
         SELECT id, fecha, hora, motivo, vehiculo_texto, google_event_id
@@ -664,20 +686,42 @@ Tu última consulta fue sobre:
         }
       }
 
-      return res.json({
-        reply:
+      const respuestaCancelacion =
     `✅ Cancelé tu cita correctamente.
 
     🚗 Vehículo: ${citaSeleccionada.vehiculo_texto}
     🔧 Servicio: ${citaSeleccionada.motivo}
     📅 Fecha: ${new Date(citaSeleccionada.fecha).toLocaleDateString('es-PE')}
-    ⏰ Hora: ${String(citaSeleccionada.hora).slice(0, 5)}`,
-        intent: "appointment_cancelled"
+    ⏰ Hora: ${String(citaSeleccionada.hora).slice(0, 5)}`;
+      const tiempoRespuesta = Date.now() - inicio;
+      await saveMessage(conversacion.id, 'usuario', userMsg, 'appointment_cancelled', null);
+      await saveMessage(conversacion.id, 'bot', respuestaCancelacion, 'appointment_cancelled', tiempoRespuesta);
+      await guardarMetrica({
+        conversacion_id: conversacion.id,
+        pregunta: userMsg,
+        respuesta: respuestaCancelacion,
+        intencion_detectada: 'appointment_cancelled',
+        tiempo_respuesta_ms: tiempoRespuesta,
+        canal,
+        stt_exitoso: sttExitoso,
+        tts_exitoso: ttsExitoso
+      });
+
+      return res.json({
+        reply: respuestaCancelacion,
+        intent: 'appointment_cancelled',
+        appointment_in_progress: false,
+        response_time_ms: tiempoRespuesta
       });
     }
 
     // ── 12. Consulta de cita ya existente ──
-    if (preguntaPorCitaExistente(userMsg)) {
+    const solicitaCancelarCita = wantsToCancelExistingAppointment(userMsg);
+    if (solicitaCancelarCita || preguntaPorCitaExistente(userMsg)) {
+      // Un cambio explícito de intención no debe reanudar el formulario de agendamiento.
+      if (solicitaCancelarCita) {
+        await query('DELETE FROM estado_cita_temporal WHERE usuario_id = ?', [usuario.id]);
+      }
       const citas = await query(
         `
         SELECT id, fecha, hora, estado, motivo, cliente_nombre, cliente_telefono, vehiculo_texto
@@ -695,9 +739,13 @@ Tu última consulta fue sobre:
       let respuestaIA;
 
       if (!citas.length) {
-  respuestaIA = 'No encontré citas pendientes o confirmadas a tu nombre. Si deseas, puedo ayudarte a agendar una nueva cita.';
+        respuestaIA = solicitaCancelarCita
+          ? 'No encontré citas pendientes o confirmadas a tu nombre para cancelar.'
+          : 'No encontré citas pendientes o confirmadas a tu nombre. Si deseas, puedo ayudarte a agendar una nueva cita.';
       } else {
-        respuestaIA = `Sí 😊 Tienes estas citas registradas:\n\n` +
+        respuestaIA = (solicitaCancelarCita
+          ? 'Claro. Estas son tus citas activas; dime cuál deseas cancelar:\n\n'
+          : 'Sí 😊 Tienes estas citas registradas:\n\n') +
           citas.map((cita, index) => {
             const fechaFormateada = new Date(cita.fecha).toLocaleDateString('es-PE');
 
@@ -713,75 +761,35 @@ Tu última consulta fue sobre:
           `\n\nSi deseas cancelar una, dime por ejemplo: "cancelar la cita 2".`;
       }
 
-      await saveMessage(conversacion.id, "usuario", userMsg, "appointment_query", null);
-      await saveMessage(conversacion.id, "bot", respuestaIA, "appointment_query", tiempoRespuesta);
+      const intentCita = solicitaCancelarCita ? 'appointment_cancel' : 'appointment_query';
+      await saveMessage(conversacion.id, "usuario", userMsg, intentCita, null);
+      await saveMessage(conversacion.id, "bot", respuestaIA, intentCita, tiempoRespuesta);
+      await guardarMetrica({
+        conversacion_id: conversacion.id,
+        pregunta: userMsg,
+        respuesta: respuestaIA,
+        intencion_detectada: intentCita,
+        tiempo_respuesta_ms: tiempoRespuesta,
+        canal,
+        stt_exitoso: sttExitoso,
+        tts_exitoso: ttsExitoso
+      });
 
       return res.json({
         reply: respuestaIA,
-        intent: "appointment_query",
+        intent: intentCita,
+        appointment_in_progress: false,
         response_time_ms: tiempoRespuesta
       });
     }
 
     // ── 11. Flujo activo de agendamiento (estado_cita_temporal) ──
     const estadoCitaTemporal = await obtenerEstadoCitaTemporal(usuario.id);
-
-    if (estadoCitaTemporal) {
-      const paso = estadoCitaTemporal.paso;
-
-      const mensajeEsFechaValida =
-        paso === 'fecha' && contieneFechaHora(userMsg);
-
-      const mensajeEsTelefonoValido =
-        paso === 'telefono' &&
-        extraerTelefono(userMsg);
-
-      const pasoPermiteTextoLibre =
-        paso === 'nombre' ||
-        paso === 'vehiculo' ||
-        paso === 'motivo' ||
-        paso === 'confirmar_vehiculo';
-
-      if (
-        pareceConsultaExterna(intent) &&
-        !mensajeEsFechaValida &&
-        !mensajeEsTelefonoValido &&
-        !pasoPermiteTextoLibre
-      ) {
-        const respuestaIA = `Primero terminemos de agendar tu cita 😊
-
-Actualmente estoy esperando este dato:
-${paso === 'nombre' ? '👤 tu nombre' : ''}
-${paso === 'telefono' ? '📞 tu número de teléfono' : ''}
-${paso === 'vehiculo' ? '🚗 tu vehículo' : ''}
-${paso === 'fecha' ? '📅 la fecha y hora de tu cita' : ''}
-${paso === 'confirmar_vehiculo' ? '🚗 confirmar si usarás el vehículo registrado' : ''}
-
-Luego con gusto respondo tu consulta adicional.`;
-
-        const tiempoRespuesta = Date.now() - inicio;
-
-        await saveMessage(conversacion.id, "usuario", userMsg, "appointment_pending", null);
-        await saveMessage(conversacion.id, "bot", respuestaIA, "appointment_pending", tiempoRespuesta);
-
-        await guardarMetrica({
-          conversacion_id: conversacion.id,
-          pregunta: userMsg,
-          respuesta: respuestaIA,
-          intencion_detectada: "appointment_pending",
-          tiempo_respuesta_ms: tiempoRespuesta,
-          canal,
-          stt_exitoso: sttExitoso,
-          tts_exitoso: ttsExitoso
-        });
-
-        return res.json({
-          reply: respuestaIA,
-          intent: "appointment_pending",
-          response_time_ms: tiempoRespuesta
-        });
-      }
-    }
+    const esCancelacionFlujo = wantsToCancelBookingFlow(userMsg);
+    const consultaEnCita = estadoCitaTemporal && !esCancelacionFlujo
+      ? consultaDuranteAgendamiento(userMsg, intent)
+      : null;
+    if (consultaEnCita) intent = consultaEnCita.intent;
 
     if (intent === "follow_up" && conversacion.ultima_intencion) {
       intent = conversacion.ultima_intencion;
@@ -794,19 +802,7 @@ Luego con gusto respondo tu consulta adicional.`;
     // CITAS
     let citaResult = null;
 
-    const textoParaRuta = normalizarBase(userMsg)
-      .replace(/[¿?¡!.,]/g, '')
-      .trim();
-
-    const esCancelacionFlujo =
-      textoParaRuta === 'cancelar' ||
-      textoParaRuta === 'salir' ||
-      textoParaRuta === 'detener' ||
-      textoParaRuta.includes('cancelar agendamiento') ||
-      textoParaRuta.includes('cancelar proceso') ||
-      textoParaRuta.includes('ya no quiero agendar');
-
-    if (intent === "appointment" || estadoCitaTemporal || esCancelacionFlujo) {
+    if (!consultaEnCita && (intent === "appointment" || estadoCitaTemporal || esCancelacionFlujo)) {
       citaResult = await appointmentAgent(userMsg, usuario.id, {
         ...lastContext,
         ...contextoPersistente,
@@ -815,13 +811,19 @@ Luego con gusto respondo tu consulta adicional.`;
       });
     }
 
-    if (citaResult) {
+    if (consultaEnCita?.saludo) {
+      agentResult = { intent: 'info', directReply: '¡Hola! Sí, aquí estoy para ayudarte 😊' };
+    } else if (citaResult) {
+      intent = citaResult.intent || 'appointment';
       agentResult = {
-        intent: "appointment",
+        intent,
         data: [],
         keyword: null,
         directReply: citaResult.reply
       };
+    } else if (intent === 'appointment') {
+      intent = 'appointment_clarify';
+      agentResult = { intent, directReply: '¿Quieres agendar una nueva cita, consultar tus citas o cancelar una que ya tienes? Dime cuál opción necesitas.' };
     }
 
     // INVENTARIO
@@ -881,6 +883,10 @@ Luego con gusto respondo tu consulta adicional.`;
         userMsg
       );
 
+    }
+
+    if (consultaEnCita) {
+      respuestaIA += `\n\n${recordatorioAgendamiento(estadoCitaTemporal.paso)}`;
     }
 
     const tiempoRespuesta = Date.now() - inicio;
@@ -975,6 +981,7 @@ Luego con gusto respondo tu consulta adicional.`;
       textoParaFiltro.includes('de la noche');
 
     const noDebeGuardarComoMotivo =
+      Boolean(consultaEnCita) ||
       preguntaMemoriaPersonal ||
       esCancelacion ||
       pareceFechaHora;
@@ -1024,7 +1031,7 @@ Luego con gusto respondo tu consulta adicional.`;
         : null;
 
     const motivoSeguro =
-      !esMensajeCortoBasura && motivoDetectado
+      !consultaEnCita && !esMensajeCortoBasura && esMotivoCitaValido(motivoDetectado)
         ? motivoDetectado
         : null;
 
@@ -1047,6 +1054,7 @@ Luego con gusto respondo tu consulta adicional.`;
     res.status(responseStatus).json({
       reply: respuestaIA,
       intent: intentFinal,
+      appointment_in_progress: !['appointment_completed', 'appointment_flow_cancelled'].includes(intentFinal) && Boolean(estadoCitaTemporal || (citaResult && citaResult.success)),
       response_time_ms: tiempoRespuesta
     });
 

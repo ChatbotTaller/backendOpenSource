@@ -12,6 +12,22 @@ const db = require('../src/config/database');
 const appointmentAgent = require('../src/agents/appointmentAgent');
 
 describe('Reserva concurrente de citas', () => {
+  test('rechaza "También" antes de insertar una cita', async () => {
+    db.promise.mockClear();
+    const result = await appointmentAgent.__test.registrarCitaConControl({
+      usuarioId: 1,
+      fecha: '2026-12-10',
+      hora: '11:00',
+      nombre: 'Cliente de prueba',
+      telefono: '999999999',
+      vehiculo: 'Vehículo de prueba',
+      motivo: 'También'
+    });
+
+    expect(result.invalid).toBe(true);
+    expect(db.promise).not.toHaveBeenCalled();
+  });
+
   test('registrar una cita no cambia el nombre verificado del usuario', async () => {
     const connection = {
       beginTransaction: jest.fn().mockResolvedValue(undefined),
@@ -36,7 +52,7 @@ describe('Reserva concurrente de citas', () => {
       nombre: 'Contacto de la cita',
       telefono: '999999999',
       vehiculo: 'Vehículo de prueba',
-      motivo: 'Servicio de prueba'
+      motivo: 'Cambio de aceite'
     });
 
     expect(result).toBeNull();
@@ -72,7 +88,7 @@ describe('Reserva concurrente de citas', () => {
       nombre: 'Cliente de prueba',
       telefono: '999999999',
       vehiculo: 'Vehículo de prueba',
-      motivo: 'Servicio de prueba'
+      motivo: 'Cambio de aceite'
     });
 
     expect(result.conflict).toBe(true);

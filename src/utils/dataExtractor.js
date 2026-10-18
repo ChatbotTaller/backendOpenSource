@@ -227,12 +227,18 @@ function extraerMotivo(texto) {
 }
 
 function esMotivoCitaValido(texto) {
+  if (/[¿?]/.test(String(texto || ''))) return false;
   const motivo = normalizar(texto)
     .replace(/[¿?¡!.,]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 
   if (motivo.length < 3) return false;
+  if (/^(?:hola|buenas|buenos dias|buenas tardes|buenas noches)\b/.test(motivo)) return false;
+
+  // Respuestas de continuidad o cambios de intención no son servicios.
+  if (/^(?:tambien|ademas|igual|lo mismo|si|no|ok|vale|listo|claro|perfecto|gracias|eso|otro|otra|uno|una)$/.test(motivo)) return false;
+  if (/\b(?:cancelar|anular|eliminar|borrar|quitar)\b.*\b(?:cita|reserva|turno)\b/.test(motivo)) return false;
 
   const frasesDeControl = [
     /^(?:agendar|reservar|programar|registrar|sacar|separar)(?:me)?\s+(?:una?\s+)?(?:cita|turno|reserva)$/,
@@ -241,6 +247,17 @@ function esMotivoCitaValido(texto) {
   ];
 
   if (frasesDeControl.some(patron => patron.test(motivo))) return false;
+
+  // El detalle debe describir una pieza, un trabajo o un síntoma del vehículo.
+  // Una respuesta conversacional ("hola", "también", "quiero una cita") no basta.
+  const temaAutomotriz = /\b(?:auto|carro|vehiculo|motor|frenos?|pastillas?|discos?|suspension|amortiguadores?|radiador|aceite|filtros?|bateria|llantas?|neumaticos?|embrague|clutch|transmision|caja de cambios|inyectores?|bujias?|alternador|arranque|encendido|direccion|aire acondicionado|escape|parachoques|carroceria|chasis|scanner|escaneo|alineamiento|balanceo|afinamiento|mantenimiento|diagnostico|lubricacion|refrigerante|correas?|fugas?|ruidos?|vibracion|pintura|planchado|pulido|lavado|electrico|electronico|calentamiento|humo|combustible|gasolina|diesel|bomba|termostato|luces|faros|parabrisas|limpiaparabrisas|eje|rodamientos?|tren delantero|tren posterior)\b/;
+  const sintomaConcreto = /\b(?:no enciende|no prende|no arranca|se apaga|se calienta|pierde potencia|no frena|hace ruido|tiene fuga)\b/;
+  if (!temaAutomotriz.test(motivo) && !sintomaConcreto.test(motivo)) return false;
+  const trabajoOSintoma = /\b(?:cambio|cambiar|reparacion|reparar|revision|revisar|falla|problema|mantenimiento|diagnostico|escaneo|alineamiento|balanceo|afinamiento|lubricacion|pintura|planchado|pulido|lavado|fuga|ruido|vibracion|suena|vibra|golpea|calienta|humo)\b/;
+  const servicioConcreto = /^(?:alineamiento|balanceo|afinamiento|escaneo|pintura|planchado|pulido)$/;
+  if (!trabajoOSintoma.test(motivo) && !sintomaConcreto.test(motivo) && !servicioConcreto.test(motivo)) return false;
+  if (motivo.split(' ').length === 1 && !servicioConcreto.test(motivo)) return false;
+  if (/^(?:que|cual|cuales|como|donde|cuando|cuanto|cuanta|cuantos)\b/.test(motivo) && !/^que no\b/.test(motivo)) return false;
 
   const esPreguntaSobreDatos =
     /^(?:que|cual|como|sabes|recuerdas|dime)\b/.test(motivo) &&

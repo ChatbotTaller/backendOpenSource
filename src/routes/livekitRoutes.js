@@ -48,7 +48,7 @@ router.post('/token', verificarSesionCliente, async (req, res) => {
     at.roomConfig = new RoomConfiguration({
     agents: [
         new RoomAgentDispatch({
-        agentName: 'mara'
+        agentName: process.env.LIVEKIT_AGENT_NAME || 'mara'
         })
     ]
     });
@@ -57,7 +57,9 @@ router.post('/token', verificarSesionCliente, async (req, res) => {
       token: await at.toJwt(),
       url: getRequiredEnv('LIVEKIT_URL'),
       roomName,
-      participantName
+      participantName,
+      agentName: process.env.LIVEKIT_AGENT_NAME || 'mara',
+      flowVersion: require('../config/maraVersion')
     });
 
   } catch (error) {

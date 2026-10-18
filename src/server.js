@@ -19,6 +19,10 @@ const {
 const logger = require('./utils/logger');
 
 const app = express();
+app.use((req, res, next) => {
+  res.set('X-Mara-Flow-Version', require('./config/maraVersion'));
+  next();
+});
 
 const allowedOrigins = getCorsOrigins();
 

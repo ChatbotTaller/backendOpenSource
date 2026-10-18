@@ -4,6 +4,7 @@ const {
   eliminarEventoCita
 } = require('../services/googleCalendarService');
 const { cancelarCitaPropiaPorDatos } = require('../services/citaOwnershipService');
+const { wantsToCancelExistingAppointment, wantsToCancelBookingFlow, wantsToCreateAppointment } = require('../utils/appointmentCancellationIntent');
 
 const {
   extraerTelefono,
@@ -44,34 +45,7 @@ function normalizar(texto) {
 // ─────────────────────────────────────────────
 
 function detectarIntencionCita(msg) {
-  const texto = normalizar(msg);
-  const preguntaConsultaCita =
-    texto.includes('tengo alguna cita') ||
-    texto.includes('tengo una cita') ||
-    texto.includes('cuando es mi cita') ||
-    texto.includes('cuándo es mi cita') ||
-    texto.includes('cita agendada') ||
-    texto.includes('cita registrada');
-
-  if (preguntaConsultaCita) return false;
-  
-  return (
-    /\bcita\b/.test(texto) ||
-    /\bcitas\b/.test(texto) ||
-    texto.includes('reserva') ||
-    texto.includes('reservar') ||
-    texto.includes('reservame') ||
-    texto.includes('agendar') ||
-    texto.includes('programar') ||
-    texto.includes('turno') ||
-    texto.includes('separar turno') ||
-    texto.includes('pasado mañana') ||
-    texto.includes('pasado manana') ||
-    texto.includes('quiero ir') ||
-    texto.includes('puedo ir') ||
-    texto.includes('generarme mi reserva') ||
-    texto.includes('generar reserva')
-  );
+  return wantsToCreateAppointment(msg);
 }
 
 function rechazaAgendamiento(msg) {
@@ -90,30 +64,11 @@ function rechazaAgendamiento(msg) {
 }
 
 function quiereCancelarFlujoActivo(msg) {
-  const texto = normalizar(msg);
-  return (
-    texto === 'cancelar' ||
-    texto === 'salir' ||
-    texto === 'detener' ||
-    texto.includes('cancelar proceso') ||
-    texto.includes('cancelar agendamiento') ||
-    texto.includes('ya no quiero agendar') ||
-    texto.includes('ya no deseo agendar') ||
-    texto.includes('no quiero agendar') ||
-    texto.includes('no deseo registrar cita') ||
-    texto.includes('salir del agendamiento') ||
-    texto.includes('detener agendamiento')
-  );
+  return wantsToCancelBookingFlow(msg);
 }
 
 function quiereCancelarCitaExistente(msg) {
-  const texto = normalizar(msg);
-  return (
-    texto.includes('cancelar mi cita') ||
-    texto.includes('cancelar cita') ||
-    texto.includes('anular mi cita') ||
-    texto.includes('eliminar mi cita')
-  );
+  return wantsToCancelExistingAppointment(msg);
 }
 
 function confirmarVehiculoSi(msg) {
@@ -763,7 +718,7 @@ async function appointmentAgent(message, usuarioId, lastContext = null) {
     await query(`DELETE FROM estado_cita_temporal WHERE usuario_id = ?`, [usuarioId]);
     return {
       success: true,
-      intent: 'appointment_cancelled',
+      intent: 'appointment_flow_cancelled',
       reply: '✅ Se canceló el proceso de agendamiento.\n\nAhora puedes realizar cualquier otra consulta 😊'
     };
   }
@@ -1239,11 +1194,11 @@ Ahora continuemos con tu cita:
       return {
         success: false,
         reply:
-`No pude reconocer bien el servicio o problema 😅
+`Para registrar tu cita, cuéntame qué trabajo o problema tiene tu vehículo 😊
 
-Por favor dime qué deseas atender.
-Ejemplo:
-Cambio de aceite`
+Por ejemplo: cambio de aceite, reparación del motor, revisión de frenos o falla de suspensión.
+
+Tu cita sigue en proceso; aún no se ha registrado.`
       };
     }
 
@@ -1283,12 +1238,6 @@ ${fechaEjemploCita()}`
     }
 
     const { fecha, hora } = extraerFechaHoraNatural(message);
-
-    console.log('🧪 FECHA/HORA DETECTADA:', {
-      mensaje: message,
-      fecha,
-      hora
-    });
 
     if (!fecha || !hora) {
       return {

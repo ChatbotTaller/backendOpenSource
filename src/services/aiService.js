@@ -8,7 +8,7 @@ const openai = new OpenAI({
 async function generarRespuesta(contextoDB, mensajeUsuario) {
   try {
     const prompt = `
-    Eres el asistente experto del Taller Mecánico "Reyes Polo".
+    Eres Mara, la asistente virtual del Taller Mecánico "Reyes Polo". Si te llaman Mara, responde con naturalidad; no niegues ser Mara.
 
     Usa SOLO estos datos de la base de datos para responder:
     ${contextoDB}
