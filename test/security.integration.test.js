@@ -37,6 +37,15 @@ function adminToken(extra = {}, options = {}) {
   );
 }
 
+async function privacyAcknowledgement() {
+  const response = await request(app).post('/privacy/acknowledge').send({
+    accepted: true,
+    version: '2026-10-11'
+  });
+  expect(response.status).toBe(200);
+  return response.body.acknowledgement;
+}
+
 function mockDniConnection(usuarios = []) {
   const connection = {
     query: jest.fn(),
@@ -74,7 +83,37 @@ afterEach(() => {
 
 describe('Seguridad HTTP e identidad', () => {
   test('DNI inválido devuelve 400', async () => {
-    const response = await request(app).post('/dni/verificar').send({ dni: '12ABC' });
+    const acknowledgement = await privacyAcknowledgement();
+    const response = await request(app).post('/dni/verificar')
+      .set('X-Privacy-Acknowledgement', acknowledgement).send({ dni: '12ABC' });
+    expect(response.status).toBe(400);
+  });
+
+  test('DNI sin confirmación del aviso devuelve 403 sin consultar proveedores', async () => {
+    const response = await request(app).post('/dni/verificar').send({ dni: '12345678' });
+    expect(response.status).toBe(403);
+    expect(db.promise).not.toHaveBeenCalled();
+  });
+
+  test('una confirmación inventada por el cliente no habilita el DNI', async () => {
+    const response = await request(app).post('/dni/verificar')
+      .set('X-Privacy-Acknowledgement', 'confirmacion-inventada')
+      .send({ dni: '12345678' });
+    expect(response.status).toBe(403);
+    expect(db.promise).not.toHaveBeenCalled();
+  });
+
+  test('rechazar el aviso no genera una confirmación', async () => {
+    const response = await request(app).post('/privacy/acknowledge').send({
+      accepted: false, version: '2026-10-11'
+    });
+    expect(response.status).toBe(400);
+  });
+
+  test('versión anterior del aviso no genera confirmación', async () => {
+    const response = await request(app).post('/privacy/acknowledge').send({
+      accepted: true, version: 'anterior'
+    });
     expect(response.status).toBe(400);
   });
 
@@ -87,7 +126,9 @@ describe('Seguridad HTTP e identidad', () => {
     });
     mockDniConnection([]);
 
-    const response = await request(app).post('/dni/verificar').send({ dni: '12345678' });
+    const acknowledgement = await privacyAcknowledgement();
+    const response = await request(app).post('/dni/verificar')
+      .set('X-Privacy-Acknowledgement', acknowledgement).send({ dni: '12345678' });
 
     expect(response.status).toBe(200);
     expect(response.body.session_id).toMatch(/^cs_[A-Za-z0-9_-]{40,}$/);
@@ -104,7 +145,9 @@ describe('Seguridad HTTP e identidad', () => {
     });
     const connection = mockDniConnection([{ id: 790 }]);
 
-    const response = await request(app).post('/dni/verificar').send({ dni: '12345678' });
+    const acknowledgement = await privacyAcknowledgement();
+    const response = await request(app).post('/dni/verificar')
+      .set('X-Privacy-Acknowledgement', acknowledgement).send({ dni: '12345678' });
 
     expect(response.status).toBe(200);
     expect(response.body.usuario.id).toBe(790);
@@ -143,6 +186,20 @@ describe('Seguridad HTTP e identidad', () => {
       .get('/cliente/sesion')
       .set('Authorization', `Bearer ${CLIENT_TOKEN_A}`);
     expect(response.status).toBe(401);
+  });
+
+  test('cerrar sesión invalida la credencial de cliente en la base de datos', async () => {
+    db.query.mockImplementationOnce(respond([
+      { id: 10, nombre: 'Cliente', telefono: null, session_id: CLIENT_TOKEN_A }
+    ]));
+    const query = jest.fn().mockResolvedValue([{ affectedRows: 1 }]);
+    db.promise.mockReturnValue({ query });
+    const response = await request(app).post('/cliente/logout')
+      .set('Authorization', `Bearer ${CLIENT_TOKEN_A}`).send({});
+    expect(response.status).toBe(200);
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining('SET session_id = NULL'), [10, CLIENT_TOKEN_A]
+    );
   });
 
   test('sesión falsificada devuelve 401 sin consultar la base de datos', async () => {
@@ -295,7 +352,7 @@ describe('Seguridad HTTP e identidad', () => {
     const response = method === 'PUT'
       ? await request(app).put(path).send({})
       : await request(app).get(path);
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(path === '/auth/google' ? 404 : 401);
   });
 
   test('/webhook/voice exige credencial interna', async () => {

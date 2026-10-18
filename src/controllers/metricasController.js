@@ -1,5 +1,6 @@
 const db = require('../config/database');
 const { isPositiveInteger } = require('../utils/validators');
+const logger = require('../utils/logger');
 
 function obtenerMetricas(req, res) {
   const sql = `
@@ -11,7 +12,7 @@ function obtenerMetricas(req, res) {
 
   db.query(sql, (err, results) => {
     if (err) {
-      console.error("Error obteniendo métricas:", err);
+      logger.error('metricas_query_failed', { code: err.code });
       return res.status(500).json({
         error: "Error obteniendo métricas"
       });
@@ -57,7 +58,7 @@ function evaluarMetrica(req, res) {
     ],
     (err, result) => {
       if (err) {
-        console.error("Error evaluando métrica:", err);
+        logger.error('metricas_update_failed', { code: err.code });
         return res.status(500).json({
           error: "Error evaluando métrica"
         });
@@ -95,7 +96,7 @@ function obtenerResumenMetricas(req, res) {
 
   db.query(sqlRespuestas, (err, resumenResults) => {
     if (err) {
-      console.error("Error obteniendo resumen:", err);
+      logger.error('metricas_summary_failed', { code: err.code });
       return res.status(500).json({
         error: "Error obteniendo resumen de métricas"
       });
@@ -103,7 +104,7 @@ function obtenerResumenMetricas(req, res) {
 
     db.query(sqlIntenciones, (err2, intentRows) => {
       if (err2) {
-        console.error("Error obteniendo intenciones:", err2);
+        logger.error('metricas_intents_failed', { code: err2.code });
         return res.status(500).json({
           error: "Error obteniendo métricas de intención"
         });
@@ -198,7 +199,7 @@ function obtenerMetricasPorIntent(req, res) {
 
   db.query(sql, (err, results) => {
     if (err) {
-      console.error("Error obteniendo métricas por intent:", err);
+      logger.error('metricas_by_intent_failed', { code: err.code });
       return res.status(500).json({
         error: "Error obteniendo métricas por intención"
       });
@@ -231,7 +232,7 @@ function obtenerMetricasVoz(req, res) {
 
   db.query(sql, (err, results) => {
     if (err) {
-      console.error("Error obteniendo métricas de voz:", err);
+      logger.error('metricas_voice_failed', { code: err.code });
       return res.status(500).json({
         error: "Error obteniendo métricas de voz"
       });
