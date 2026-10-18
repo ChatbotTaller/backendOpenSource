@@ -45,6 +45,33 @@ describe('Protección del contexto durante el agendamiento', () => {
     expect(extraerMotivo('¿Cuál es el problema que tienes registrado?')).toBeNull();
     expect(esMotivoCitaValido('Agendar cita')).toBe(false);
     expect(extraerMotivo('cambio de aceite')).toBe('Cambio de aceite');
+    expect(extraerMotivo('también')).toBeNull();
+    expect(esMotivoCitaValido('También')).toBe(false);
+    expect(esMotivoCitaValido('Frenos')).toBe(false);
+    expect(esMotivoCitaValido('Motor')).toBe(false);
+    expect(esMotivoCitaValido('hola')).toBe(false);
+    expect(esMotivoCitaValido('hola motor')).toBe(false);
+    expect(esMotivoCitaValido('Reparación del motor')).toBe(true);
+    expect(esMotivoCitaValido('Revisión del radiador')).toBe(true);
+    expect(esMotivoCitaValido('Falla de suspensión')).toBe(true);
+    expect(esMotivoCitaValido('¿Cuánto cuesta el cambio de aceite?')).toBe(false);
+    expect(esMotivoCitaValido('Servicio de prueba')).toBe(false);
+  });
+
+  test('no avanza al paso de fecha con "también" como servicio', async () => {
+    prepararEstado({
+      paso: 'motivo',
+      nombre: 'Cliente Prueba',
+      telefono: '949939879',
+      vehiculo: 'Toyota Yaris',
+      motivo: null
+    });
+
+    const resultado = await appointmentAgent('también', 10);
+
+    expect(resultado.success).toBe(false);
+    expect(resultado.reply).toContain('trabajo o problema');
+    expect(db.query.mock.calls.some(([sql]) => sql.includes("SET motivo = ?, paso = 'fecha'"))).toBe(false);
   });
 
   test('después del teléfono confirma el vehículo y no hereda un motivo anterior', async () => {

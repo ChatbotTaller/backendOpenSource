@@ -308,6 +308,8 @@ Puntos importantes:
 - `VOICE_SERVICE_TOKEN` autentica la comunicación interna entre `simli-agent` y `backendOpenSource`; su valor debe coincidir en ambos servicios.
 - En local, `BACKEND_URL` del agente Simli debe ser `http://localhost:3000/webhook/voice`.
 - En Railway, `BACKEND_URL` del servicio `simli-agent` debe apuntar a la URL HTTPS pública del backend terminada en `/webhook/voice`.
+- El frontend abierto en `localhost` no vuelve local al agente: LiveKit despacha el trabajo al proceso cuyo `LIVEKIT_AGENT_NAME` coincida. Para probar todo en local sin que responda el agente antiguo de Railway, configura `LIVEKIT_AGENT_NAME=mara-local` tanto en el backend local como en `simli-test`, y ejecuta ese agente local.
+- Después de cambiar la lógica conversacional se deben redesplegar **dos servicios**: `backendOpenSource` y `simli-agent`. En los logs del agente, la cabecera `X-Mara-Flow-Version` permite confirmar que Mara está hablando con la versión esperada del backend.
 - `CORS_ORIGINS` debe contener solo los orígenes permitidos, separados por comas.
 - Las integraciones Retell y WhatsApp permanecen deshabilitadas por defecto mediante sus banderas `ENABLE_*`.
 

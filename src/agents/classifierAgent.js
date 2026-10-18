@@ -5,9 +5,15 @@ function normalize(text) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
+const { wantsToCancelExistingAppointment, wantsToCancelBookingFlow, wantsToListAppointments, wantsToCreateAppointment } = require('../utils/appointmentCancellationIntent');
+
 function classifyIntent(message) {
 
   const msg = normalize(message);
+
+  if (wantsToCancelExistingAppointment(message)) return 'appointment_cancel';
+  if (wantsToCancelBookingFlow(message)) return 'appointment';
+  if (wantsToListAppointments(message) && !wantsToCreateAppointment(message)) return 'appointment_query';
 
   
   if (
@@ -97,6 +103,7 @@ function classifyIntent(message) {
     msg.includes("servicio") ||
     msg.includes("servicios") ||
     msg.includes("mantenimiento") ||
+    msg.includes("cambio de aceite") ||
     msg.includes("reparacion") ||
     msg.includes("garantia") ||
     msg.includes("freno") ||
