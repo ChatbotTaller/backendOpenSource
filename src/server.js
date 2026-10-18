@@ -34,6 +34,7 @@ app.use(cors({
     'Content-Type',
     'Authorization',
     'X-Client-Session',
+    'X-Privacy-Acknowledgement',
     'X-Voice-Service-Token'
   ],
   credentials: false
@@ -64,7 +65,7 @@ app.use('/', citasRoutes);
 app.use('/', metricasRoutes);
 app.use('/', authRoutes);
 app.use('/', dniRoutes);
-app.use('/', googleRoutes);
+if (isFeatureEnabled('ENABLE_GOOGLE_CALENDAR')) app.use('/', googleRoutes);
 
 if (isFeatureEnabled('ENABLE_WHATSAPP')) app.use('/', whatsappRoutes);
 if (isFeatureEnabled('ENABLE_RETELL')) app.use('/', retellRoutes);
@@ -88,13 +89,11 @@ function startServer() {
 }
 
 app.get('/politica-privacidad', (req, res) => {
-  res.send(`
-    <h1>Política de Privacidad - Taller Reyes Polo</h1>
-    <p>Esta aplicación utiliza proveedores tecnológicos para validar identidad, procesar consultas, voz y citas.</p>
-    <p>Los datos como nombre, teléfono, vehículo y mensajes se usan únicamente para la atención y gestión solicitada.</p>
-    <p>Solo se envía a cada proveedor la información necesaria para prestar su función.</p>
-    <p>Contacto: m4eg24@gmail.com</p>
-  `);
+  try {
+    return res.redirect(302, new URL('/privacidad', process.env.FRONTEND_URL).toString());
+  } catch {
+    return res.status(503).send('El aviso de privacidad está disponible en el frontend configurado del sistema.');
+  }
 });
 
 const options = {

@@ -2,6 +2,10 @@ const express = require('express');
 const router = express.Router();
 
 const { verificarDni } = require('../controllers/dniController');
+const {
+  acknowledgePrivacyNotice,
+  requirePrivacyAcknowledgement
+} = require('../middlewares/privacyNoticeMiddleware');
 
 /**
  * @swagger
@@ -30,6 +34,7 @@ const { verificarDni } = require('../controllers/dniController');
  *       502:
  *         description: Servicio externo de identidad no disponible
  */
-router.post('/dni/verificar', verificarDni);
+router.post('/privacy/acknowledge', acknowledgePrivacyNotice);
+router.post('/dni/verificar', requirePrivacyAcknowledgement, verificarDni);
 
 module.exports = router;

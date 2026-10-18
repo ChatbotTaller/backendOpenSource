@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { google } = require('googleapis');
+const calendarEnabled = process.env.ENABLE_GOOGLE_CALENDAR === 'true';
 
 const credentialsPath = path.join(__dirname, '../../google-credentials.json');
 const tokenPath = path.join(__dirname, '../../google-token.json');
@@ -9,9 +10,9 @@ let oauth2Client = null;
 
 let credentials = null;
 
-if (process.env.GOOGLE_CREDENTIALS_JSON) {
+if (calendarEnabled && process.env.GOOGLE_CREDENTIALS_JSON) {
   credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
-} else if (fs.existsSync(credentialsPath)) {
+} else if (calendarEnabled && fs.existsSync(credentialsPath)) {
   credentials = JSON.parse(fs.readFileSync(credentialsPath));
 }
 
@@ -23,7 +24,7 @@ if (credentials) {
     client_secret,
     redirect_uris[0]
   );
-} else {
+} else if (calendarEnabled) {
   console.log('Google Calendar no configurado.');
 }
 
@@ -67,6 +68,7 @@ function cargarToken() {
 }
 
 async function crearEventoCita(cita) {
+  if (!calendarEnabled) return null;
   const tokenExiste = cargarToken();
 
   if (!tokenExiste) {
@@ -116,6 +118,7 @@ Servicio: ${cita.motivo}
 }
 
 async function eliminarEventoCita(eventId) {
+  if (!calendarEnabled) return null;
   const tokenExiste = cargarToken();
 
   if (!tokenExiste || !eventId) {

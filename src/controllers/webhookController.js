@@ -50,8 +50,7 @@ const {
   getOrCreateSession,
   saveMessage,
   updateConversationContext,
-  getLastContext,
-  getConversationMessages
+  getLastContext
 } = require('../agents/memoryAgent');
 
 // ─────────────────────────────────────────────
@@ -587,15 +586,9 @@ Tu última consulta fue sobre:
       });
     }
 
-    // ── 11. Clasificación de intención + contexto reciente ──
+    // ── 11. Clasificación de intención ──
     let intent = classifyIntent(userMsg);
     const lastContext = getLastContext(conversacion);
-
-    const ultimosMensajes = await getConversationMessages(conversacion.id, 8);
-
-    const contextoConversacion = ultimosMensajes
-      .map(m => `${m.remitente}: ${m.mensaje}`)
-      .join('\n');
 
     // ── 12. Mensajes de cierre tras una cita ya completada ──
     const mensajeCierre = ['ok', 'okay', 'okey', 'gracias', 'listo', 'ya', 'perfecto'];
@@ -864,13 +857,14 @@ Luego con gusto respondo tu consulta adicional.`;
     }
 
     // ── 14. Generación de la respuesta final (agente directo o IA) ──
+    const resultadoExterno = intent === 'inventory' && Array.isArray(agentResult?.data)
+      ? { intent, data: agentResult.data.map(({ descripcion, precio_venta }) => ({ descripcion, precio_venta })) }
+      : agentResult;
     const contextoIA = {
-      usuario,
+      // El modelo no necesita nombre, correo, teléfono, token ni historial del cliente.
       intent,
-      pregunta_usuario: userMsg,
       agente_seleccionado: agentSkills[intent] || agentSkills.info,
-      resultado_agente: agentResult,
-      contexto_anterior: lastContext
+      resultado_agente: resultadoExterno
     };
 
     let respuestaIA;
@@ -883,12 +877,7 @@ Luego con gusto respondo tu consulta adicional.`;
     } else {
 
       respuestaIA = await aiService.generarRespuesta(
-        `
-      ${JSON.stringify(contextoIA)}
-
-      Conversación reciente:
-      ${contextoConversacion}
-      `,
+        JSON.stringify(contextoIA),
         userMsg
       );
 
@@ -1007,7 +996,7 @@ Luego con gusto respondo tu consulta adicional.`;
       intent: intentFinal,
       vehiculo: vehiculoSeguroFinal || lastContext?.vehiculo || contextoPersistente?.vehiculo || null,
       motivo: motivoSeguroFinal || lastContext?.motivo || contextoPersistente?.motivo || null,
-      data: agentResult?.data ? agentResult.data.slice(0, 3) : []
+      data: resultadoExterno?.data ? resultadoExterno.data.slice(0, 3) : []
     };
 
     await updateConversationContext(conversacion.id, intentFinal, nuevoContexto);

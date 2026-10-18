@@ -47,7 +47,9 @@ async function requestAdminPasswordReset(req, res) {
 
   const config = getConfig();
   if (!config) return res.status(503).json({ error: 'La recuperación no está configurada temporalmente.' });
-  if (email !== config.email) return res.json({ message: GENERIC_MESSAGE });
+  if (email !== config.email) {
+    return res.status(404).json({ error: 'Correo no registrado para la recuperación administrativa.' });
+  }
 
   const key = crypto.createHash('sha256').update(email).digest('hex');
   const lastSent = recentEmails.get(key) || 0;

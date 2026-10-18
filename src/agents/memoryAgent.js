@@ -3,7 +3,7 @@ const db = require('../config/database');
 function getOrCreateSession(sessionId) {
   return new Promise((resolve, reject) => {
       db.query(
-        `SELECT id, nombre, email, telefono, preferencias, observaciones, session_id
+        `SELECT id, nombre, telefono
          FROM usuarios
          WHERE session_id = ? AND estado = 'activo'
          LIMIT 1`,
@@ -27,7 +27,7 @@ function getOrCreateSession(sessionId) {
             if (err) return reject(err);
 
             db.query(
-              `SELECT *
+              `SELECT id, ultima_intencion, ultimo_contexto
                FROM conversaciones
                WHERE usuario_id = ? AND canal = 'web'
                ORDER BY id DESC

@@ -22,10 +22,11 @@ afterEach(() => {
   sendPasswordResetEmail.mockReset();
 });
 
-test('solicitud con correo no configurado responde genéricamente sin enviar', async () => {
+test('solicitud con correo no registrado devuelve 404 sin enviar', async () => {
   const response = await request(app).post('/auth/password-reset/request').send({ email: 'otro@example.com' });
-  expect(response.status).toBe(200);
-  expect(response.body.message).toMatch(/Si el correo corresponde/);
+  expect(response.status).toBe(404);
+  expect(response.body.error).toMatch(/Correo no registrado/);
+  expect(db.promise).not.toHaveBeenCalled();
   expect(sendPasswordResetEmail).not.toHaveBeenCalled();
 });
 
