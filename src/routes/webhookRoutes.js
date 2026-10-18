@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const db = require('../config/database');
 // Importamos todo el objeto del controlador
 const webhookController = require('../controllers/webhookController');
 const {
@@ -65,6 +66,19 @@ router.get('/cliente/sesion', verificarSesionCliente, (req, res) => {
       nombre: req.cliente.nombre
     }
   });
+});
+
+router.post('/cliente/logout', verificarSesionCliente, async (req, res) => {
+  try {
+    await db.promise().query(
+      'UPDATE usuarios SET session_id = NULL WHERE id = ? AND session_id = ?',
+      [req.cliente.id, req.clientSessionId]
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true });
+  } catch {
+    return res.status(500).json({ error: 'No se pudo cerrar la sesión.' });
+  }
 });
 
 module.exports = router;

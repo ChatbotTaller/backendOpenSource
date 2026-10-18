@@ -29,8 +29,7 @@ async function generarRespuesta(contextoDB, mensajeUsuario) {
     - Adapta ligeramente el tono al estilo del cliente:
       si el cliente habla informal como "bro", "brother", "causa", "mano", "hermano", "pata", "habla", puedes responder de forma amigable y cercana, pero sin exagerar.
       si el cliente habla formal, responde formal y profesional.
-    - Si conoces el nombre del cliente por el contexto, úsalo de forma natural.
-    - No inventes datos del cliente si no aparecen en el contexto.
+    - No solicites ni inventes datos personales innecesarios.
     - No respondas todo en un solo párrafo.
     - Usa este formato:
       Nombre: ...
@@ -61,7 +60,7 @@ async function generarRespuesta(contextoDB, mensajeUsuario) {
 
     return respuesta;
   } catch (error) {
-    console.error("❌ Error en OpenAI:", error);
+    console.error('Error en OpenAI:', error?.code || error?.name || 'Error externo');
     return "Lo siento, mi conexión falló temporalmente. ¿Podrías intentar de nuevo?";
   }
 }

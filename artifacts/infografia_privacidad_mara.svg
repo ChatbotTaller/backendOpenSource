@@ -1,0 +1,136 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2400" viewBox="0 0 1600 2400" role="img" aria-labelledby="title desc">
+  <title id="title">Componentes de privacidad de datos del sistema MARA</title>
+  <desc id="desc">Infografía académica que muestra los datos tratados, el flujo Angular–Express–MySQL, los servicios externos y los ocho controles funcionales y no funcionales de privacidad, diferenciando controles parciales y pendientes.</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#11141d"/><stop offset="1" stop-color="#080a10"/></linearGradient>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#dc332a"/><stop offset="1" stop-color="#871d22"/></linearGradient>
+    <linearGradient id="flow" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#f04a3c"/><stop offset="1" stop-color="#ff9a63"/></linearGradient>
+    <style>
+      text{font-family:Arial,Helvetica,sans-serif;fill:#f4f4f2}
+      .kicker{font-size:24px;font-weight:700;letter-spacing:4px;fill:#ff6d5f}
+      .title{font-size:75px;font-weight:800;letter-spacing:-2px}
+      .intro{font-size:27px;fill:#c8c9ce}
+      .section{font-size:39px;font-weight:800;letter-spacing:-.7px}
+      .section-note{font-size:22px;fill:#aeb1bb}
+      .flow-title{font-size:30px;font-weight:800}
+      .flow-text{font-size:22px;fill:#bdc0c9}
+      .card-code{font-size:21px;font-weight:800;letter-spacing:2px;fill:#ff7568}
+      .card-title{font-size:32px;font-weight:800}
+      .card-body{font-size:23px;fill:#c8cad1}
+      .pill-text{font-size:18px;font-weight:800;letter-spacing:1.4px}
+      .small{font-size:20px;fill:#aeb1bb}
+    </style>
+  </defs>
+
+  <rect width="1600" height="2400" fill="url(#page)"/>
+  <circle cx="1470" cy="140" r="320" fill="#bf2d27" opacity=".09"/>
+  <circle cx="80" cy="1810" r="420" fill="#344b69" opacity=".10"/>
+  <path d="M80 79H1520" stroke="#333842" stroke-width="2"/>
+  <rect x="82" y="106" width="9" height="158" rx="4" fill="url(#hero)"/>
+  <text x="121" y="139" class="kicker">TALLER REYES POLO  /  MARA</text>
+  <text x="118" y="222" class="title">Privacidad de datos</text>
+  <text x="119" y="271" class="intro">Datos tratados, recorrido tecnológico y componentes de privacidad definidos.</text>
+
+  <rect x="1070" y="112" width="440" height="54" rx="27" fill="#301c20" stroke="#a94a42" stroke-width="2"/>
+  <circle cx="1103" cy="139" r="8" fill="#ff7669"/>
+  <text x="1124" y="147" font-size="21" font-weight="700">APLICABLE · DATOS PERSONALES</text>
+
+  <rect x="80" y="315" width="1440" height="512" rx="30" fill="#171b25" stroke="#333842" stroke-width="2"/>
+  <text x="119" y="373" class="section">El recorrido de la información</text>
+  <text x="120" y="410" class="section-note">DNI y nombre · teléfono y vehículo · citas · mensajes de texto/voz · métricas</text>
+
+  <rect x="120" y="458" width="410" height="198" rx="23" fill="#25232b" stroke="#6c3a3a" stroke-width="2"/>
+  <rect x="120" y="458" width="410" height="7" rx="3" fill="#ef4d42"/>
+  <text x="151" y="516" class="flow-title">01  Angular 19</text>
+  <text x="151" y="553" class="flow-text">Aviso previo al DNI, chat</text>
+  <text x="151" y="583" class="flow-text">y selección de voz.</text>
+  <text x="151" y="623" font-size="19" fill="#ff9a8d">Frontend alojado en Vercel</text>
+
+  <path d="M545 555H575" stroke="url(#flow)" stroke-width="5" stroke-linecap="round"/>
+  <path d="m571 546 14 9-14 9" fill="none" stroke="#ff806d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="595" y="458" width="410" height="198" rx="23" fill="#25232b" stroke="#6c3a3a" stroke-width="2"/>
+  <rect x="595" y="458" width="410" height="7" rx="3" fill="#ef4d42"/>
+  <text x="626" y="516" class="flow-title">02  Node.js / Express</text>
+  <text x="626" y="553" class="flow-text">Valida sesiones y permisos;</text>
+  <text x="626" y="583" class="flow-text">delimita datos para cada tarea.</text>
+  <text x="626" y="623" font-size="19" fill="#ff9a8d">Backend alojado en Railway</text>
+
+  <path d="M1020 555H1050" stroke="url(#flow)" stroke-width="5" stroke-linecap="round"/>
+  <path d="m1046 546 14 9-14 9" fill="none" stroke="#ff806d" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <rect x="1070" y="458" width="410" height="198" rx="23" fill="#25232b" stroke="#6c3a3a" stroke-width="2"/>
+  <rect x="1070" y="458" width="410" height="7" rx="3" fill="#ef4d42"/>
+  <text x="1101" y="516" class="flow-title">03  MySQL</text>
+  <text x="1101" y="553" class="flow-text">Clientes, citas, conversaciones</text>
+  <text x="1101" y="583" class="flow-text">y métricas operativas.</text>
+  <text x="1101" y="623" font-size="19" fill="#ff9a8d">Acceso condicionado por rol/sesión</text>
+
+  <path d="M120 695H1480" stroke="#39404d" stroke-width="2"/>
+  <text x="120" y="738" font-size="22" font-weight="800" fill="#ff8071">TERCEROS SEGÚN FUNCIÓN</text>
+  <text x="120" y="777" font-size="22" fill="#d2d3d7">API Perú · OpenAI · LiveKit · Simli · Brevo</text>
+  <text x="790" y="777" font-size="20" fill="#aeb1bb">No todos reciben los mismos datos.</text>
+
+  <text x="80" y="915" class="section">Controles funcionales</text>
+  <text x="80" y="950" class="section-note">Lo que debe poder hacer MARA para respetar la privacidad del cliente.</text>
+
+  <rect x="80" y="987" width="700" height="219" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="113" y="1030" class="card-code">RFP01</text>
+  <text x="113" y="1083" class="card-title">Aviso y decisión previa</text>
+  <text x="113" y="1127" class="card-body">Informar antes del DNI y gestionar</text>
+  <text x="113" y="1159" class="card-body">la decisión de la persona usuaria.</text>
+
+  <rect x="820" y="987" width="700" height="219" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="853" y="1030" class="card-code">RFP02</text>
+  <text x="853" y="1083" class="card-title">Minimización</text>
+  <text x="853" y="1127" class="card-body">Solicitar y compartir solo los datos</text>
+  <text x="853" y="1159" class="card-body">necesarios para cada atención.</text>
+
+  <rect x="80" y="1230" width="700" height="219" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="113" y="1273" class="card-code">RFP03</text>
+  <text x="113" y="1326" class="card-title">Aislamiento por sesión</text>
+  <text x="113" y="1370" class="card-body">Separar citas, mensajes y datos según</text>
+  <text x="113" y="1402" class="card-body">la identidad y los permisos autorizados.</text>
+
+  <rect x="820" y="1230" width="700" height="219" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="853" y="1273" class="card-code">RFP04</text>
+  <text x="853" y="1326" class="card-title">Derechos ARCO</text>
+  <text x="853" y="1370" class="card-body">Gestionar acceso, rectificación,</text>
+  <text x="853" y="1402" class="card-body">cancelación y oposición.</text>
+
+  <text x="80" y="1531" class="section">Controles no funcionales</text>
+  <text x="80" y="1566" class="section-note">Condiciones transversales de protección durante el tratamiento.</text>
+
+  <rect x="80" y="1603" width="700" height="207" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="113" y="1646" class="card-code">RNFP01</text>
+  <text x="113" y="1699" class="card-title">Confidencialidad</text>
+  <text x="113" y="1743" class="card-body">Proteger el acceso, la transmisión</text>
+  <text x="113" y="1775" class="card-body">y el almacenamiento de información.</text>
+
+  <rect x="820" y="1603" width="700" height="207" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="853" y="1646" class="card-code">RNFP02</text>
+  <text x="853" y="1699" class="card-title">Conservación y eliminación</text>
+  <text x="853" y="1743" class="card-body">Definir plazos y retirar datos al</text>
+  <text x="853" y="1775" class="card-body">cumplirse su finalidad de uso.</text>
+
+  <rect x="80" y="1834" width="700" height="207" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="113" y="1877" class="card-code">RNFP03</text>
+  <text x="113" y="1930" class="card-title">Servicios externos</text>
+  <text x="113" y="1974" class="card-body">Delimitar qué información recibe</text>
+  <text x="113" y="2006" class="card-body">cada proveedor tecnológico.</text>
+
+  <rect x="820" y="1834" width="700" height="207" rx="24" fill="#1b1e27" stroke="#353a47" stroke-width="2"/>
+  <text x="853" y="1877" class="card-code">RNFP04</text>
+  <text x="853" y="1930" class="card-title">Registros y reportes</text>
+  <text x="853" y="1974" class="card-body">Reducir datos personales en logs,</text>
+  <text x="853" y="2006" class="card-body">métricas y archivos exportados.</text>
+
+  <rect x="80" y="2101" width="1440" height="160" rx="26" fill="url(#hero)"/>
+  <text x="116" y="2150" font-size="24" font-weight="800" letter-spacing="2">APLICABILIDAD DE LA PRIVACIDAD</text>
+  <text x="116" y="2193" font-size="27" font-weight="700">MARA trata datos personales: la privacidad sí es aplicable.</text>
+  <text x="116" y="2228" font-size="22" fill="#ffe2df">Componentes definidos en el anexo; la evidencia de implementación se documenta por separado.</text>
+
+  <path d="M80 2310H1520" stroke="#333842" stroke-width="2"/>
+  <text x="80" y="2347" class="small">Fuente: E4 Anexo Privacidad, sección F; revisión técnica local de MARA (octubre de 2026).</text>
+  <text x="1518" y="2347" class="small" text-anchor="end">Taller Reyes Polo  ·  Proyecto académico</text>
+</svg>

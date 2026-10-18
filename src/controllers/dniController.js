@@ -146,6 +146,11 @@ async function verificarDni(req, res) {
       sessionId
     );
 
+    logger.info('privacy_notice_acknowledged', {
+      userId: usuario.id,
+      version: req.privacyNoticeVersion
+    });
+
     return res.json({
       success: true,
       usuario,
