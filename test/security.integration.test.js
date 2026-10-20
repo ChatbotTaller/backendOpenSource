@@ -346,6 +346,9 @@ describe('Seguridad HTTP e identidad', () => {
     ['GET', '/metricas/resumen'],
     ['GET', '/metricas/por-intent'],
     ['GET', '/metricas/voz'],
+    ['GET', '/admin/insights/clientes-citas'],
+    ['GET', '/admin/insights/demanda-servicios'],
+    ['GET', '/admin/repuestos'],
     ['PUT', '/metricas/1'],
     ['GET', '/auth/google']
   ])('%s %s rechaza acceso administrativo sin JWT', async (method, path) => {
